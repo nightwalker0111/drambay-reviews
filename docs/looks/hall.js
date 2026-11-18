@@ -27,6 +27,7 @@ in vec2 vUv; in vec3 vW; out vec4 o;
 uniform sampler2D uTex; uniform int uMode; uniform float uTime, uActive, uR, uLen, uPulse; uniform vec2 uRes;
 const vec3 FLOOR_FAR = vec3(.765, .735, .69), FLOOR_NEAR = vec3(.60, .57, .53);
 const vec3 WALL = vec3(.953, .941, .914), CEIL = vec3(.72, .69, .645);
+const vec3 BAND = vec3(.153, .173, .176);
 vec3 fin(float x, float side){ return side < 0. ? mix(vec3(.243, .267, .271), vec3(.215, .238, .242), x) : mix(vec3(.168, .188, .192), vec3(.196, .218, .222), x); }
 void main(){
   vec2 s = gl_FragCoord.xy/uRes - .5; float vig = 1. - .34*dot(s, s);
@@ -41,7 +42,7 @@ void main(){
   }
   if (uMode == 2){                                   // wall above the bays, fading up to the ceiling
     float y = vUv.y*uLen; float e = ${PIL}./${WF}.;
-    vec3 c = mix(WALL, CEIL, smoothstep(20., 520., y));
+    vec3 c = BAND*mix(1., .78, smoothstep(190., 560., y));          // one dark banner above every bay, the logo sits on it
     float gp = 1.5/${WF}., gw = fwidth(vUv.x);
     if (vUv.x < e) c = fin(vUv.x/e, -1.)*mix(1., .8, smoothstep(0., 520., y));
     else if (vUv.x > 1. - e) c = fin((vUv.x - 1. + e)/e, 1.)*mix(1., .8, smoothstep(0., 520., y));
@@ -122,6 +123,7 @@ export class Hall {
     let g = x.createLinearGradient(0, 0, 0, BH); g.addColorStop(0, '#F3F0E9'); g.addColorStop(1, '#EAE5DC'); x.fillStyle = g; x.fillRect(0, 0, WF, BH);
     g = x.createLinearGradient(0, 0, PIL, 0); g.addColorStop(0, '#3E4445'); g.addColorStop(1, '#373D3E'); x.fillStyle = g; x.fillRect(0, 0, PIL, BH);
     g = x.createLinearGradient(WF - PIL, 0, WF, 0); g.addColorStop(0, '#2B3031'); g.addColorStop(1, '#323839'); x.fillStyle = g; x.fillRect(WF - PIL, 0, PIL, BH);
+    x.fillStyle = '#272C2D'; x.fillRect(PIL, 0, DW, WIN[1]);            // the banner runs down to the picture
     // bathroom window
     const [wx, wy, ww, wh] = WIN;
     if (b.room) x.drawImage(b.room, wx, wy, ww, wh); else { x.fillStyle = '#D9D2C7'; x.fillRect(wx, wy, ww, wh); }
@@ -152,8 +154,8 @@ export class Hall {
       }
     } else {
       // every other size is laid to the same scale from the bottom left corner, the way a floor starts: what does not fit is cut at the right and at the top.
-      // (500 mm tiles are drawn 4 % small so five fit across.) A dark + light pair is laid as its checker.
-      const k = .375 * (big === 500 ? .96 : 1), cw = big * k, chh = small * k, cols = Math.ceil(pw / cw - .01), rows = Math.ceil(ph / chh - .01);
+      // Tiles of 600 mm and smaller are drawn large, two across, so the graining shows. A dark + light pair is laid as its checker.
+      const k = big <= 600 ? pw / (2 * big) : .375, cw = big * k, chh = small * k, cols = Math.ceil(pw / cw - .01), rows = Math.ceil(ph / chh - .01);
       x.save(); x.beginPath(); x.rect(px, py, pw, ph); x.clip();
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
         const n = r * cols + c, fi = d.pair ? (r + c) % 2 : (n + (nf > 2 ? r : 0)) % nf;
@@ -169,6 +171,9 @@ export class Hall {
       g = x.createLinearGradient(px + pw * .08, py, px + pw * .62, py + ph); g.addColorStop(0, 'rgba(255,250,240,0)'); g.addColorStop(.42, `rgba(255,250,240,${gl_ * .35})`); g.addColorStop(.5, `rgba(255,250,240,${gl_})`); g.addColorStop(.58, `rgba(255,250,240,${gl_ * .35})`); g.addColorStop(1, 'rgba(255,250,240,0)');
       x.fillStyle = g; x.fillRect(px, py, pw, ph); x.restore();
     }
+    // close-up mark, top right of the panel
+    { const cx = px + pw - 52, cy = py + 52; x.save(); x.fillStyle = 'rgba(22,25,26,.58)'; x.beginPath(); x.arc(cx, cy, 30, 0, 7); x.fill();
+      x.strokeStyle = '#fff'; x.lineWidth = 3.2; x.lineCap = 'round'; x.beginPath(); x.arc(cx - 3, cy - 3, 10.5, 0, 7); x.moveTo(cx + 5, cy + 5); x.lineTo(cx + 12, cy + 12); x.moveTo(cx - 3, cy - 7.5); x.lineTo(cx - 3, cy + 1.5); x.moveTo(cx - 7.5, cy - 3); x.lineTo(cx + 1.5, cy - 3); x.stroke(); x.restore(); }
     // shadow gap beside each fin
     x.fillStyle = 'rgba(20,22,23,.55)'; x.fillRect(PIL - 1.5, 0, 3, BH); x.fillRect(WF - PIL - 1.5, 0, 3, BH);
     this._upload(b);
@@ -176,7 +181,7 @@ export class Hall {
   /* the dark board above every bay: the Drambay logo and name from the master file, never redrawn */
   _board(){
     const gl = this.gl, c = document.createElement('canvas'), k = 2; c.width = BOARD[2] * k; c.height = BOARD[3] * k; const x = c.getContext('2d'); x.scale(k, k);
-    const g = x.createLinearGradient(0, 0, 0, BOARD[3]); g.addColorStop(0, '#262B2C'); g.addColorStop(1, '#2E3435'); x.fillStyle = g; x.fillRect(0, 0, BOARD[2], BOARD[3]);
+    const g = x.createLinearGradient(0, 0, 0, BOARD[3]); x.fillStyle = '#272C2D'; x.fillRect(0, 0, BOARD[2], BOARD[3]);
     const lh = BOARD[3] * .6, lw = lh * this.logo.naturalWidth / this.logo.naturalHeight; x.drawImage(this.logo, (BOARD[2] - lw) / 2, (BOARD[3] - lh) / 2, lw, lh);
     if (this.board) gl.deleteTexture(this.board);
     this.board = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.board); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -341,7 +346,8 @@ export class Hall {
       if (up && (!d.go || (d.far < 18 && dt < 450)) && dt < 900){
         this.target = Math.round(this.yaw / SEG) * SEG;
         const h = this.hit(x, y); if (!h) return;
-        if (h.bay === this.active && h.part !== 'wall') this.enter(h.bay);
+        if (h.bay === this.active && h.part === 'panel' && this.o.onZoom) this.o.onZoom(h.bay);
+        else if (h.bay === this.active && h.part !== 'wall') this.enter(h.bay);
         else if (h.bay !== this.active){ if (h.part === 'window') this.enter(h.bay); else this.turn(Math.sign(wrap(h.bay * SEG - this.yaw))); }
         return;
       }

@@ -340,7 +340,7 @@ function buildHall(){
   if (SPACES[Q.get('space')]) hspace = Q.get('space');
   bays = hallRows(hspace); drawSpaces();
   hall = new Hall($('hallcv'), {
-    bays, still: STILL, faceUrl: (n) => face(n, 640), logo: 'logo-white.svg',
+    bays, still: STILL, faceUrl: (n) => face(n, 640), logo: 'logo-white.svg', onZoom: (i) => { const d = bays[i] && bays[i].design; if (d) openZoom([{ d, label: 'Tile' }]); },
     paint: async (b, put, w) => {
       const room = await roomOf(b.base).room; let S;
       for (;;){ S = {}; for (const k of ['floor', 'wall', 'feature']) S[k] = b.combo[k] ? await eng.loadSet(byCode(b.combo[k]), full) : S.floor; if (!open) break; await wait(200); }
@@ -383,6 +383,102 @@ function closeHall(pop){
   if (!hallOn) return; hallOn = false; spaceMenu(false); hall.close(); $('hall').classList.remove('on'); document.body.style.overflow = '';
   if (!pop && history.state && history.state.h){ skipPop = true; history.back(); }
   renderGrid();
+}
+
+/* ---------- tile close-up: the whole tile floats over the picture; pinch, scroll or double tap to see the graining ---------- */
+let zm = null;
+const hiRes = (n) => face(n, 2800);
+// from a mockup: the tiles of this look. From the hall: the design of the bay in front.
+function zoomLook(){
+  if (!open) return;
+  if (floorOnly()) return openZoom([{ d: byCode(fstate[vspace]), label: 'Floor' }]);
+  const seen = [], items = [];
+  for (const [k, name] of SLOTS){ const d = byCode(state[k]); const at = seen.indexOf(d.code); if (at < 0){ seen.push(d.code); items.push({ d, label: name }); } }
+  openZoom(items);
+}
+function openZoom(items){
+  items = items.filter(it => it.d && it.d.faces && it.d.faces.length); if (!items.length) return;
+  zm = { items, i: 0, f: 0, s: 1, x: 0, y: 0, tok: 0, w: 0, h: 0, turn: false, ptr: new Map(), lastTap: 0 };
+  cancelAnimationFrame(raf);                                  // the moving picture rests while the tile is in front of it
+  $('zoom').classList.add('on'); history.pushState({ z: 1 }, ''); zoomTabs(); zoomShow();
+  if (!store.get('drb-zoomhint')){ store.set('drb-zoomhint', '1'); toast(matchMedia('(pointer: coarse)').matches ? 'Pinch or double tap to see the graining.' : 'Scroll or double click to see the graining.'); }
+}
+function closeZoom(pop){
+  if (!zm) return; zm = null; $('zoom').classList.remove('on', 'zin'); $('zimg').removeAttribute('src');
+  if (!pop && history.state && history.state.z){ skipPop = true; history.back(); }
+  if (open) loop();
+}
+function zoomTabs(){
+  const host = $('ztabs'); host.innerHTML = ''; const many = zm.items.length > 1;
+  zm.items.forEach((it, i) => {
+    const faces = it.d.faces.slice(0, many ? 2 : 6); if (!many && faces.length < 2) return;
+    if (many){ const t = document.createElement('span'); t.textContent = it.label; host.appendChild(t); }
+    faces.forEach((n, f) => { const b = document.createElement('button'); b.type = 'button'; b.style.backgroundImage = `url("${thumb(n)}")`; b.setAttribute('aria-label', `${it.d.name}, tile ${f + 1}`); b.setAttribute('aria-pressed', i === zm.i && f === zm.f); b.onclick = () => { zm.i = i; zm.f = f; zoomTabs(); zoomShow(); }; host.appendChild(b); });
+  });
+}
+function zoomShow(){
+  const z = zm, d = z.items[z.i].d, n = d.faces[z.f], me = ++z.tok, img = $('zimg');
+  const one = d.pair ? byCode(d.pair[z.f]) || d : d;
+  $('zname').textContent = one.name; $('zmeta').textContent = `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm`;
+  z.s = 1; z.x = 0; z.y = 0; z.n = n; z.res = 0; z.ratio = Math.max(...d.size) / Math.min(...d.size); z.nat = null; img.removeAttribute('src'); zoomPlace();
+  // sharper in steps: the picture already on this device first, then the full one, then the largest when zoomed in
+  const step = (url, res) => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { if (!zm || z.tok !== me || res <= z.res) return; z.res = res; z.nat = [im.naturalWidth, im.naturalHeight]; img.src = url; zoomPlace(); }; im.src = url; };
+  step(face(n, 640), 1); step(full(n), 2); z.more = () => { z.more = null; step(hiRes(n), 3); };
+}
+// the tile sits whole in the middle with air around it; long tiles lie the way the screen is longer
+function zoomPlace(){
+  const z = zm; if (!z) return; const st = $('zstage'), W = st.clientWidth, H = st.clientHeight, img = $('zimg');
+  const tall = z.nat ? z.nat[1] > z.nat[0] * 1.05 : false, wide = z.nat ? z.nat[0] > z.nat[1] * 1.05 : false;
+  const wantTall = H > W * 1.1; z.turn = (tall && !wantTall) || (wide && wantTall);
+  let r = z.nat ? z.nat[0] / z.nat[1] : (wantTall ? 1 / z.ratio : z.ratio); if (z.turn) r = 1 / r;
+  const mw = W * (W < 600 ? .86 : .7), mh = H - (W < 600 ? 250 : 230), bw = Math.min(mw, mh * r), bh = bw / r;
+  z.w = bw; z.h = bh;
+  const s = z.s, tw = bw * s, th = bh * s, lx = Math.max(0, (tw - W) / 2 + (s > 1 ? W * .3 : 0)), ly = Math.max(0, (th - H) / 2 + (s > 1 ? H * .3 : 0));
+  z.x = Math.max(-lx, Math.min(lx, z.x)); z.y = Math.max(-ly, Math.min(ly, z.y));
+  const t = $('ztile'); t.style.width = tw + 'px'; t.style.height = th + 'px'; t.style.transform = `translate(${-tw / 2 + z.x}px, ${-th / 2 + z.y - (s > 1 ? 0 : 8)}px)`;
+  if (z.turn){ img.style.width = th + 'px'; img.style.height = tw + 'px'; img.style.transform = 'translate(-50%, -50%) rotate(90deg)'; }
+  else { img.style.width = tw + 'px'; img.style.height = th + 'px'; img.style.transform = 'translate(-50%, -50%)'; }
+  $('zoom').classList.toggle('zin', s > 1.02);
+  if (s > 1.5 && z.more) z.more();
+}
+function zoomTo(s2, px, py){                   // keep the point under the finger where it is
+  const z = zm, st = $('zstage'), cx = px - st.clientWidth / 2, cy = py - st.clientHeight / 2; const top = z.nat ? Math.max(2.5, Math.min(8, 1.6 * Math.max(...z.nat) / Math.max(z.w, z.h))) : 2.5; s2 = Math.max(1, Math.min(top, s2));      // never far past what the picture really holds
+  const k = s2 / z.s; z.x = cx - (cx - z.x) * k; z.y = cy - (cy - z.y) * k; z.s = s2; if (s2 === 1){ z.x = 0; z.y = 0; } zoomPlace();
+}
+{
+  const st = $('zstage'), onTile = (e) => { const r = $('ztile').getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
+  st.addEventListener('pointerdown', (e) => {
+    if (!zm) return; const z = zm; z.ptr.set(e.pointerId, [e.clientX, e.clientY]); try { st.setPointerCapture(e.pointerId); } catch (er) {}
+    if (z.ptr.size === 1) z.g = { x: e.clientX, y: e.clientY, t: performance.now(), far: 0, on: onTile(e) };
+    else if (z.ptr.size === 2){ const [a, b] = [...z.ptr.values()]; z.pin = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, s: z.s }; z.g = null; }
+  });
+  st.addEventListener('pointermove', (e) => {
+    const z = zm; if (!z || !z.ptr.has(e.pointerId)) return; const was = z.ptr.get(e.pointerId); z.ptr.set(e.pointerId, [e.clientX, e.clientY]);
+    if (z.ptr.size >= 2 && z.pin){ const [a, b] = [...z.ptr.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, r = st.getBoundingClientRect(); zoomTo(z.pin.s * d / z.pin.d, (a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top); return; }
+    if (z.g){ z.g.far = Math.max(z.g.far, Math.hypot(e.clientX - z.g.x, e.clientY - z.g.y)); if (z.s > 1){ z.x += e.clientX - was[0]; z.y += e.clientY - was[1]; zoomPlace(); } }
+  });
+  const end = (e) => {
+    const z = zm; if (!z || !z.ptr.has(e.pointerId)) return; z.ptr.delete(e.pointerId); if (z.ptr.size < 2) z.pin = null;
+    const g = z.g; if (z.ptr.size) { z.g = null; return; } z.g = null;
+    if (!g || e.type !== 'pointerup' || g.far > 10 || performance.now() - g.t > 500) return;
+    const now = performance.now(), r = st.getBoundingClientRect();
+    if (!g.on && z.s <= 1.02){ closeZoom(); return; }                                         // a tap on the air around the tile closes it
+    if (now - z.lastTap < 400){ z.lastTap = 0; zoomTo(z.s > 1.02 ? 1 : 3, e.clientX - r.left, e.clientY - r.top); } else z.lastTap = now;
+  };
+  st.addEventListener('pointerup', end); st.addEventListener('pointercancel', end);
+  st.addEventListener('wheel', (e) => { if (!zm) return; e.preventDefault(); const r = st.getBoundingClientRect(); zoomTo(zm.s * Math.exp(-e.deltaY * .0022), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  $('zclose').onclick = () => closeZoom(); addEventListener('resize', () => zm && zoomPlace());
+  addEventListener('keydown', (e) => { if (!zm) return; e.stopImmediatePropagation(); if (e.key === 'Escape') closeZoom(); }, true);
+}
+
+/* ---------- surprise me inside a mockup: another look for the room on screen ---------- */
+function viewSurprise(){
+  if (!open) return; $('vshuffle').classList.toggle('spin');
+  if (!floorOnly()) return surprise();
+  const cur = byCode(fstate[vspace]), T = (d) => TONE[d.code];
+  let pool = designs.filter(d => fitsIn(vspace, d) && T(d) && d.code !== cur.code && !(d.terrace && open.id === 'p1')); if (!pool.length) return;
+  const flip = pool.filter(d => (T(d)[0] >= 60) !== (T(cur)[0] >= 60)); if (flip.length >= 3) pool = flip;      // light after dark, dark after light: a clear change each time
+  fstate[vspace] = pool[Math.floor(Math.random() * pool.length)].code; changed();
 }
 
 /* ---------- surprise me: a new combination that follows a simple colour rule ---------- */
@@ -470,11 +566,11 @@ async function start(){
   else if (Q.has('walk')) openHall();
 }
 $('close').onclick = () => closeViewer();
-addEventListener('popstate', () => { if (skipPop){ skipPop = false; return; } if (open) closeViewer(true); else closeHall(true); });
+addEventListener('popstate', () => { if (skipPop){ skipPop = false; return; } if (zm){ closeZoom(true); return; } if (open) closeViewer(true); else closeHall(true); });
 $('walk').onclick = openHall; $('hclose').onclick = () => closeHall(); $('hprev').onclick = () => hall.turn(-1); $('hnext').onclick = () => hall.turn(1); $('hstep').onclick = () => hall.enter(hall.active); $('hshuffle').onclick = hallSurprise;
 $('hspace').onclick = () => spaceMenu($('hmenu').hidden); $('hallcv').addEventListener('pointerdown', () => spaceMenu(false));
 $('prev').onclick = () => go(-1); $('next').onclick = () => go(1);
-$('share').onclick = share; $('ask').onclick = ask; $('offline').onclick = saveOffline; $('shuffle').onclick = surprise;
+$('share').onclick = share; $('vshuffle').onclick = viewSurprise; $('zoomb').onclick = () => zoomLook(); $('offline').onclick = saveOffline; $('shuffle').onclick = surprise;
 $('swap').onclick = () => { [state.wall, state.feature] = [state.feature, state.wall]; changed(); };
 $('sheetClose').onclick = () => $('sheet').classList.remove('on');
 $('sheet').onclick = (e) => { if (e.target === $('sheet')) $('sheet').classList.remove('on'); };

@@ -1,4 +1,5 @@
 import { Engine } from './engine.js';
+import { Hall, WIN } from './hall.js';
 
 const ROOMS = ['r7', 'r3', 'r6'];
 const WA = '919501034545';
@@ -137,7 +138,8 @@ async function show(i){
   $('vbg').style.backgroundImage = `url("rooms/${c.id}/thumb.jpg")`;
   await drawViewer(0);
 }
-async function openViewer(c){
+async function openViewer(c, soft){
+  $('viewer').classList.toggle('fadein', !!soft);
   if (needAsk && !tilt.on && store.get('drb-tilt') === '1') askTilt();      // must run inside the tap itself
   $('frame').appendChild(eng.canvas); $('viewer').classList.remove('bare'); $('viewer').classList.add('on'); document.body.style.overflow = 'hidden';
   history.pushState({ v: 1 }, ''); setFrame(0, 1);
@@ -147,8 +149,8 @@ async function openViewer(c){
 function closeViewer(pop){
   if (!open) return; open = null; cancelAnimationFrame(raf); going = false; drag = null;
   $('viewer').classList.remove('on'); document.body.style.overflow = '';
-  if (!pop && history.state && history.state.v) history.back();
-  renderGrid();
+  if (!pop && history.state && history.state.v){ skipPop = true; history.back(); }
+  if (hallOn) hall.resume(); else renderGrid();
 }
 async function go(dir){
   if (!open || going || cards.length < 2) return; going = true;
@@ -234,6 +236,55 @@ function ask(){
   window.open(`https://wa.me/${WA}?text=${encodeURIComponent(t)}`, '_blank', 'noopener');
 }
 
+/* ---------- 360 display hall: a ring of display bays, each one design. Tap the floor circle to step into its bathroom ---------- */
+// [the design on show (walls), floor, feature wall, bathroom]
+const BAYS = [
+  ['DRB-6012-003', 'DRB-6012-003', 'DRB-6012-003', 'r3'], ['DRB-6012-012', 'DRB-6012-003', 'DRB-6012-012', 'r7'],
+  ['DRB-6012-026', 'DRB-6012-026', 'DRB-6012-026', 'r6'], ['DRB-6012-010', 'DRB-6012-015', 'DRB-6012-010', 'r3'],
+  ['DRB-6012-025', 'DRB-6012-025', 'DRB-6012-025', 'r7'], ['DRB-6012-021', 'DRB-6012-026', 'DRB-6012-021', 'r6'],
+  ['DRB-6012-015', 'DRB-6012-015', 'DRB-6012-015', 'r3'], ['DRB-6012-027', 'DRB-6012-025', 'DRB-6012-027', 'r7'],
+  ['DRB-6012-037', 'DRB-6012-037', 'DRB-6012-037', 'r6'], ['DRB-6012-016', 'DRB-6012-026', 'DRB-6012-016', 'r3'],
+  ['DRB-6012-053', 'DRB-6012-053', 'DRB-6012-053', 'r7'], ['DRB-6012-013', 'DRB-6012-025', 'DRB-6012-013', 'r6'],
+];
+let hall = null, hallOn = false, skipPop = false;
+function jointOf(t){            // same joint rule as the rooms: light tile dark joint, beige tile brown joint, dark tile light joint
+  if (!t) return [94, 92, 92]; const [L, a, b] = t;
+  if (L < 35 && b > 4) return [190, 182, 168]; if (L < 35) return [126, 128, 128];
+  if (b > 6 && L >= 55) return [104, 74, 52]; if (b > 5 && a >= 2 && L < 55) return [190, 182, 168];
+  return L >= 62 ? [60, 58, 58] : [94, 92, 92];
+}
+function buildHall(){
+  const bays = BAYS.filter(r => r.slice(0, 3).every(c => byCode(c) && MH_ok(byCode(c)))).map(([w, f, x, base]) => {
+    const d = byCode(w); return { design: d, name: d.name, meta: `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm`, joint: jointOf(TONE[d.code]), combo: { wall: w, floor: f, feature: x }, base, focusY: base === 'r7' ? .62 : .5 };
+  });
+  hall = new Hall($('hallcv'), {
+    bays, still: STILL, faceUrl: (n) => face(n, 640),
+    paint: async (b, put, w) => {
+      const room = await cards.find(c => c.id === b.base).room; let S;
+      for (;;){ S = {}; for (const k of ['floor', 'wall', 'feature']) S[k] = await eng.loadSet(byCode(b.combo[k]), full); if (!open) break; await wait(200); }
+      const h = w * WIN[3] / WIN[2], cv = eng.render(room, S, { width: Math.min(room.j.W, Math.ceil(Math.max(w, h * room.j.W / room.j.H))), grain: .008 });
+      put(cv, cv.width, cv.height);
+    },
+    onMove: (on) => $('hall').classList.toggle('going', on),
+    onBay: (i) => { $('hcount').textContent = `${i + 1} / ${bays.length}`; },
+    onEnter: (i) => { const b = bays[i]; Object.assign(state, b.combo); save(); drawPicks(); openViewer(cards.find(c => c.id === b.base), true); },
+  });
+  if (document.fonts && document.fonts.load) Promise.all([document.fonts.load('400 50px Newsreader'), document.fonts.load('500 27px "Hanken Grotesk"')]).then(() => hall.refresh()).catch(() => {});
+}
+function placeHallNav(){ if (hall) $('hall').style.setProperty('--ringy', Math.round(hall.ringY()) + 'px'); }
+function openHall(){
+  if (hallOn) return;
+  try { if (!hall) buildHall(); } catch (e) { toast('This device cannot draw the display hall.'); return; }
+  hallOn = true; $('hall').classList.add('on'); document.body.style.overflow = 'hidden'; history.pushState({ h: 1 }, '');
+  $('hall').classList.remove('going'); hall.open(); placeHallNav();
+  if (!store.get('drb-hallhint')){ store.set('drb-hallhint', '1'); toast('Drag to look around. Tap the circle on the floor to step inside.'); }
+}
+function closeHall(pop){
+  if (!hallOn) return; hallOn = false; hall.close(); $('hall').classList.remove('on'); document.body.style.overflow = '';
+  if (!pop && history.state && history.state.h){ skipPop = true; history.back(); }
+  renderGrid();
+}
+
 /* ---------- surprise me: a new combination that follows a simple colour rule ---------- */
 function surprise(){
   const T = (d) => TONE[d.code], ch = (t) => Math.hypot(t[1], t[2]), pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -289,6 +340,7 @@ async function saveOffline(){
   b.disabled = true;
   const urls = new Set();
   designs.filter(d => fits(d, 'floor')).forEach(d => { urls.add(thumb(d.faces[0])); d.faces.slice(0, 4).forEach(f => MH[f] && urls.add(full(f))); });
+  BAYS.forEach(r => { const d = byCode(r[0]); if (d) d.faces.slice(0, 6).forEach(f => MH[f] && urls.add(face(f, 640))); });      // the display hall's panels
   const list = [...urls], cache = await caches.open('drb-faces-v1'); let done = 0, bad = 0;
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   const work = async () => { while (list.length){ const u = list.pop(); try { if (!(await cache.match(u))){ const r = await fetch(u, { mode: 'cors' }); if (r.ok) await cache.put(u, r); else bad++; } } catch (e) { bad++; } done++; b.textContent = `Saving ${Math.round(done / urls.size * 100)}%`; } };
@@ -313,8 +365,11 @@ async function start(){
   load(); drawPicks(); await buildGrid(); await renderGrid();
   if (store.get('drb-offline')){ $('offline').textContent = 'Saved for offline'; $('offline').classList.add('done'); }
   if (Q.get('open')) { const c = cards.find(c => c.id === Q.get('open')); if (c) openViewer(c); }
+  else if (Q.has('walk')) openHall();
 }
-$('close').onclick = () => closeViewer(); addEventListener('popstate', () => closeViewer(true));
+$('close').onclick = () => closeViewer();
+addEventListener('popstate', () => { if (skipPop){ skipPop = false; return; } if (open) closeViewer(true); else closeHall(true); });
+$('walk').onclick = openHall; $('hclose').onclick = () => closeHall(); $('hprev').onclick = () => hall.turn(-1); $('hnext').onclick = () => hall.turn(1); $('hstep').onclick = () => hall.enter(hall.active);
 $('prev').onclick = () => go(-1); $('next').onclick = () => go(1);
 $('share').onclick = share; $('ask').onclick = ask; $('offline').onclick = saveOffline; $('shuffle').onclick = surprise;
 $('swap').onclick = () => { [state.wall, state.feature] = [state.feature, state.wall]; changed(); };
@@ -322,10 +377,11 @@ $('sheetClose').onclick = () => $('sheet').classList.remove('on');
 $('sheet').onclick = (e) => { if (e.target === $('sheet')) $('sheet').classList.remove('on'); };
 $('q').oninput = drawList;
 addEventListener('keydown', (e) => {
-  if (e.key === 'Escape'){ if ($('sheet').classList.contains('on')) $('sheet').classList.remove('on'); else closeViewer(); }
+  if (e.key === 'Escape'){ if ($('sheet').classList.contains('on')) $('sheet').classList.remove('on'); else if (open) closeViewer(); else closeHall(); }
+  else if (hallOn && !open){ if (e.key === 'ArrowRight') hall.turn(1); else if (e.key === 'ArrowLeft') hall.turn(-1); else if (e.key === 'Enter' && e.target === document.body) hall.enter(hall.active); }
   else if (open && !$('sheet').classList.contains('on')){ if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1); }
 });
-let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (open) drawViewer(); else { layoutGrid(); renderGrid(); } }, 200); });
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (hallOn){ hall.size(); placeHallNav(); } if (open) drawViewer(); else if (!hallOn) { layoutGrid(); renderGrid(); } }, 200); });
 if ('serviceWorker' in navigator){
   const had = !!navigator.serviceWorker.controller; let once = false;
   navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -333,6 +389,7 @@ if ('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !once && !open && !$('sheet').classList.contains('on')){ once = true; location.reload(); } });
 }
 window.__looks = { ready: start() };
+window.__looks.hall = () => hall;
 // test hooks: one frame of a room as a JPEG data URL, and the tilt position
 window.__looks.frame = async (id, t, w, live = true, p = null) => { const c = cards.find(c => c.id === id); return eng.render(await c.room, await sets(), { width: w, live, time: t, par: p }).toDataURL('image/jpeg', .9); };
 window.__looks.par = (x, y) => { mouse.v = [x, y]; mouse.at = performance.now() + 1e9; };

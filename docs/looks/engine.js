@@ -160,8 +160,8 @@ void main(){
       float lod = uTfin[s].w + uLods;
       vec3 rf = .6*trace(Pw, Rd, k, lod) + .4*trace(Pw, Rd, k, lod + 1.7);
       float cosv = clamp(dot(-Dn, N), 0., 1.);
-      float F = min(uTfin[s].x + uTfin[s].y*pow(1.-cosv, 5.), uTfin[s].z) * (1.-g);
-      vec3 r = col*(1.-F) + rf*F + max(rf - .45, 0.)*uTlh[s].y*(1.-g);
+      float F = min(uTfin[s].x + uTfin[s].y*pow(1.-cosv, 2.5), uTfin[s].z) * (1.-g);
+      vec3 r = col*(1.-F) + rf*F + max(rf - .5, 0.)*uTlh[s].y*(1.-g);
       col = mix(col, r, mp.g*(1.-ob.a));
     }
   }
@@ -189,8 +189,8 @@ void main(){
 }`;
 
 const FIN = {
-  hg:    { f0: .075, fg: .9, fmax: .6,  lod: .9,  lip: .0015, hb: .2 },
-  gloss: { f0: .05,  fg: .8, fmax: .42, lod: 1.7, lip: .0025, hb: .12 },
+  hg:    { f0: .16, fg: .9, fmax: .7,  lod: .7,  lip: .0012, hb: .5 },
+  gloss: { f0: .10, fg: .75, fmax: .5, lod: 1.4, lip: .0022, hb: .3 },
   matt:  { f0: 0,    fg: 0,  fmax: 0,   lod: 0,   lip: 0,     hb: 0 },
 };
 export const finishOf = d => d.finish === 'mirror' ? 'hg' : (d.finish === 'polished' ? 'gloss' : 'matt');

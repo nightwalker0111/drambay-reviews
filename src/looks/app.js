@@ -253,12 +253,31 @@ function jointOf(t){            // same joint rule as the rooms: light tile dark
   if (b > 6 && L >= 55) return [104, 74, 52]; if (b > 5 && a >= 2 && L < 55) return [190, 182, 168];
   return L >= 62 ? [60, 58, 58] : [94, 92, 92];
 }
+const bayOf = ([w, f, x, base]) => { const d = byCode(w); return { design: d, name: d.name, meta: `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm`, joint: jointOf(TONE[d.code]), combo: { wall: w, floor: f, feature: x }, base, focusY: base === 'r7' ? .62 : .5 }; };
+let bays = [];
+/* surprise me, in the hall: twelve other designs take the bays. Light and dark alternate; a dark design gets a calm light floor */
+function hallSurprise(){
+  if (!hall || hall.anim) return;
+  const T = (d) => TONE[d.code], ch = (t) => Math.hypot(t[1], t[2]), mix = (a) => a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(v => v[1]);
+  const now = new Set(bays.map(b => b.design.code));
+  const pool = designs.filter(d => fits(d, 'wall') && T(d) && d.size[0] === 600 && d.size[1] === 1200 && !/decor/i.test(d.look || '') && !/decor/i.test(d.name));
+  const fresh = pool.filter(d => !now.has(d.code)), src = fresh.length >= 12 ? fresh : pool;
+  const light = mix(src.filter(d => T(d)[0] >= 70)), dark = mix(src.filter(d => T(d)[0] < 70)), calm = pool.filter(d => T(d)[0] >= 78 && ch(T(d)) <= 12);
+  const rows = [], bases = ['r3', 'r7', 'r6'];
+  for (let i = 0; rows.length < 12 && (light.length || dark.length); i++){
+    const d = (i % 2 === 0 ? light.shift() || dark.shift() : dark.shift() || light.shift()), t = T(d);
+    let floor = d.code;
+    if (t[0] < 60){ const warm = calm.filter(c => (T(c)[2] > 5) === (t[2] > 4)); const c = (warm.length ? warm : calm); floor = c[Math.floor(Math.random() * c.length)].code; }
+    rows.push([d.code, floor, d.code, bases[rows.length % 3]]);
+  }
+  if (rows.length < 12) return;
+  bays = rows.map(bayOf); hall.spin(); setTimeout(() => { hall.setBays(bays); $('hcount').textContent = `${hall.active + 1} / ${bays.length}`; }, STILL ? 0 : 330);
+  $('hshuffle').classList.toggle('spin');
+}
 function buildHall(){
-  const bays = BAYS.filter(r => r.slice(0, 3).every(c => byCode(c) && MH_ok(byCode(c)))).map(([w, f, x, base]) => {
-    const d = byCode(w); return { design: d, name: d.name, meta: `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm`, joint: jointOf(TONE[d.code]), combo: { wall: w, floor: f, feature: x }, base, focusY: base === 'r7' ? .62 : .5 };
-  });
+  bays = BAYS.filter(r => r.slice(0, 3).every(c => byCode(c) && MH_ok(byCode(c)))).map(bayOf);
   hall = new Hall($('hallcv'), {
-    bays, still: STILL, faceUrl: (n) => face(n, 640),
+    bays, still: STILL, faceUrl: (n) => face(n, 640), logo: 'logo-white.svg',
     paint: async (b, put, w) => {
       const room = await cards.find(c => c.id === b.base).room; let S;
       for (;;){ S = {}; for (const k of ['floor', 'wall', 'feature']) S[k] = await eng.loadSet(byCode(b.combo[k]), full); if (!open) break; await wait(200); }
@@ -369,7 +388,7 @@ async function start(){
 }
 $('close').onclick = () => closeViewer();
 addEventListener('popstate', () => { if (skipPop){ skipPop = false; return; } if (open) closeViewer(true); else closeHall(true); });
-$('walk').onclick = openHall; $('hclose').onclick = () => closeHall(); $('hprev').onclick = () => hall.turn(-1); $('hnext').onclick = () => hall.turn(1); $('hstep').onclick = () => hall.enter(hall.active);
+$('walk').onclick = openHall; $('hclose').onclick = () => closeHall(); $('hprev').onclick = () => hall.turn(-1); $('hnext').onclick = () => hall.turn(1); $('hstep').onclick = () => hall.enter(hall.active); $('hshuffle').onclick = hallSurprise;
 $('prev').onclick = () => go(-1); $('next').onclick = () => go(1);
 $('share').onclick = share; $('ask').onclick = ask; $('offline').onclick = saveOffline; $('shuffle').onclick = surprise;
 $('swap').onclick = () => { [state.wall, state.feature] = [state.feature, state.wall]; changed(); };

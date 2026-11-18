@@ -4,6 +4,7 @@
 const PIL = 50, DW = 900, WF = DW + 2 * PIL, BH = 1425, EYE = 825;         // bay face, half fin, display width, bay height, eye line below the bay top
 const RING = .84, FLOORY = -(BH - EYE);
 let N = 12, SEG = Math.PI * 2 / N, R = WF / 2 / Math.tan(Math.PI / N);
+const BOARD = [PIL, 26, DW, 132];            // x, gap above the bay top, width, height
 export const WIN = [PIL, 30, DW, 600], LAB = [PIL, 630, DW, 120], PAN = [PIL, 750, DW, 675];
 const INK = '#343A3B', MUTED = '#6F7574';
 const ease = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -83,6 +84,7 @@ export class Hall {
     this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     this.aniso = gl.getExtension('EXT_texture_filter_anisotropic');
     this.yaw = 0; this.target = 0; this.vel = 0; this.cam = [0, 0, 0]; this.hz = .54; this.k = 0; this.on = false; this.paused = false; this.anim = null; this.drag = null; this.queue = Promise.resolve(); this.t0 = performance.now();
+    this.board = null; if (opts.logo){ const im = new Image(); im.onload = () => { this.logo = im; this._board(); this.need = true; }; im.src = opts.logo; }
     this._events(); this.size();
   }
   get active(){ return ((Math.round(this.yaw / SEG) % N) + N) % N; }
@@ -105,6 +107,7 @@ export class Hall {
     b.design.faces.slice(0, 6).forEach((n, i) => this._face(b, n).then(im => { if (im){ b.faces[i] = im; b.dirty = true; this.need = true; } }));
     this.queue = this.queue.then(async () => {
       while (this.paused || !this.on) await new Promise(r => setTimeout(r, 120));
+      if (!this.bays.includes(b)) return;                       // the designs were changed meanwhile
       try { await this.o.paint(b, (im, sw, sh) => {
         const w = Math.round(WIN[2] * this.k), h = Math.round(WIN[3] * this.k);
         const c = b.room || (b.room = document.createElement('canvas')); c.width = w; c.height = h;
@@ -145,9 +148,27 @@ export class Hall {
     }
     g = x.createLinearGradient(0, py, 0, py + ph); g.addColorStop(0, 'rgba(20,22,23,.34)'); g.addColorStop(.035, 'rgba(20,22,23,0)'); g.addColorStop(.036, 'rgba(255,255,255,.07)'); g.addColorStop(.45, 'rgba(255,255,255,0)'); g.addColorStop(.72, 'rgba(20,22,23,0)'); g.addColorStop(1, 'rgba(20,22,23,.10)');
     x.fillStyle = g; x.fillRect(px, py, pw, ph);
+    const gl_ = d.finish === 'mirror' ? .2 : (d.finish === 'polished' ? .12 : 0);
+    if (gl_){                                   // polished faces catch the hall's light: one soft slanted band, stronger on High Gloss
+      x.save(); x.beginPath(); x.rect(px, py, pw, ph); x.clip(); x.globalCompositeOperation = 'screen';
+      g = x.createLinearGradient(px + pw * .08, py, px + pw * .62, py + ph); g.addColorStop(0, 'rgba(255,250,240,0)'); g.addColorStop(.42, `rgba(255,250,240,${gl_ * .35})`); g.addColorStop(.5, `rgba(255,250,240,${gl_})`); g.addColorStop(.58, `rgba(255,250,240,${gl_ * .35})`); g.addColorStop(1, 'rgba(255,250,240,0)');
+      x.fillStyle = g; x.fillRect(px, py, pw, ph); x.restore();
+    }
     // shadow gap beside each fin
     x.fillStyle = 'rgba(20,22,23,.55)'; x.fillRect(PIL - 1.5, 0, 3, BH); x.fillRect(WF - PIL - 1.5, 0, 3, BH);
     this._upload(b);
+  }
+  /* the dark board above every bay: the Drambay logo and name from the master file, never redrawn */
+  _board(){
+    const gl = this.gl, c = document.createElement('canvas'), k = 2; c.width = BOARD[2] * k; c.height = BOARD[3] * k; const x = c.getContext('2d'); x.scale(k, k);
+    const g = x.createLinearGradient(0, 0, 0, BOARD[3]); g.addColorStop(0, '#262B2C'); g.addColorStop(1, '#2E3435'); x.fillStyle = g; x.fillRect(0, 0, BOARD[2], BOARD[3]);
+    const lh = BOARD[3] * .6, lw = lh * this.logo.naturalWidth / this.logo.naturalHeight; x.drawImage(this.logo, (BOARD[2] - lw) / 2, (BOARD[3] - lh) / 2, lw, lh);
+    if (this.board) gl.deleteTexture(this.board);
+    this.board = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.board); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c); gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (this.aniso) gl.texParameterf(gl.TEXTURE_2D, this.aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(this.aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
   }
   _upload(b){
     const gl = this.gl; gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -188,6 +209,7 @@ export class Hall {
       gl.uniform1i(u.uMode, 1); gl.uniform1f(u.uLen, LEN); this._quad([l[0], FLOORY, l[2]], eu, [0, -LEN, 0]);
       gl.uniform1i(u.uMode, 2); gl.uniform1f(u.uLen, UP); this._quad([l[0], EYE, l[2]], eu, [0, UP, 0]);
       gl.uniform1i(u.uMode, 0); this._quad([l[0], EYE, l[2]], eu, [0, -BH, 0]);
+      if (this.board){ gl.bindTexture(gl.TEXTURE_2D, this.board); const y = EYE + BOARD[1] + BOARD[3]; this._quad([l[0] + tn[0] * BOARD[0], y, l[2] + tn[2] * BOARD[0]], [tn[0] * BOARD[2], 0, tn[2] * BOARD[2]], [0, -BOARD[3], 0]); }
     }
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.uniform1i(u.uMode, 3); const E = R * 1.1; this._quad([-E, FLOORY, -E], [2 * E, 0, 0], [0, 0, 2 * E]);
@@ -211,6 +233,16 @@ export class Hall {
   }
   open(i){ this.on = true; this.paused = false; if (i !== undefined){ this.yaw = this.target = i * SEG; } this.cam = [0, 0, 0]; this.hz = .54; this.size(); this._loop(); }
   close(){ this.on = false; cancelAnimationFrame(this.raf); }
+  setBays(list){
+    const gl = this.gl; for (const b of this.bays) if (b.tex) gl.deleteTexture(b.tex);
+    this.gen = (this.gen || 0) + 1;
+    this.bays = list.map((b, i) => ({ ...b, i, a: i * SEG, faces: [], room: null, dirty: true, tex: null, gen: this.gen, cv: document.createElement('canvas') }));
+    for (const b of this.bays){ b.cv.width = Math.round(WF * this.k); b.cv.height = Math.round(BH * this.k); }
+    this.lastActive = -1; this.need = true;
+  }
+  /* one full turn, used while the designs change */
+  spin(){ if (this.anim) return; const y0 = this.yaw, t0 = performance.now(), ms = this.o.still ? 1 : 1100; this.vel = 0; this.animKind = 'spin';
+    this.anim = (now) => { const q = Math.min(1, (now - t0) / ms); this.yaw = y0 + Math.PI * 2 * ease(q); this.need = true; if (q >= 1){ this.yaw = this.target = y0; return false; } }; }
   refresh(){ for (const b of this.bays) b.dirty = true; this.need = true; }
   ringY(){ return Math.min(this.vh - 44, this.hz * this.vh + (EYE - BH) * -1 * this.s / RING); }
   turn(dir){ if (this.anim) return; this.vel = 0; this.target = Math.round(this.target / SEG) * SEG + dir * SEG; this.need = true; }
@@ -220,9 +252,9 @@ export class Hall {
     return { cam: [Math.sin(b.a) * m, EYE - (WIN[1] + WIN[3] / 2), -Math.cos(b.a) * m], hz: .5 };
   }
   enter(i){
-    if (this.anim) return; const b = this.bays[((i % N) + N) % N]; this.vel = 0;
+    if (this.anim && this.animKind !== 'back') return; if (this.anim){ this.cam = [0, 0, 0]; this.hz = .54; this.anim = null; } const b = this.bays[((i % N) + N) % N]; this.vel = 0;
     const y0 = this.yaw, y1 = y0 + wrap(b.a - y0), turnMs = Math.min(420, Math.abs(y1 - y0) / SEG * 300), pose = this._inPose(b), t0 = performance.now(), goMs = this.o.still ? 1 : 640; let told = false;
-    this.target = y1; this.o.onMove && this.o.onMove(true);
+    this.target = y1; this.o.onMove && this.o.onMove(true); this.animKind = 'in';
     this.anim = (now) => {
       const t = now - t0; this.need = true;
       if (t < turnMs){ this.yaw = lerp(y0, y1, ease(t / turnMs)); return; }
@@ -236,8 +268,25 @@ export class Hall {
   resume(){
     if (!this.on) return; const b = this.bays[this.inside === undefined ? this.active : this.inside], pose = this._inPose(b), t0 = performance.now(), ms = this.o.still ? 1 : 520;
     this.paused = false; this.inside = undefined; this.yaw = this.target = this.yaw; this.cam = pose.cam.slice(); this.hz = pose.hz;
+    this.animKind = 'back';
     this.anim = (now) => { const q = Math.min(1, (now - t0) / ms), e = 1 - ease(q); this.cam = pose.cam.map(v => v * e); this.hz = lerp(.54, pose.hz, e); this.need = true; if (q >= 1){ this.o.onMove && this.o.onMove(false); return false; } };
     this._loop();
+  }
+  /* where a point of the hall lands on the screen */
+  project(w){
+    const d = [w[0] - this.cam[0], w[1] - this.cam[1], w[2] - this.cam[2]], c = Math.cos(this.yaw), s = Math.sin(this.yaw), x = d[0] * c + d[2] * s, z = d[0] * s - d[2] * c;
+    return z > 1 ? [this.vw / 2 + x * this.P / z, this.hz * this.vh - d[1] * this.P / z, z] : null;
+  }
+  /* the floor circle under a tap, with a finger-sized target around it (the circle itself is drawn flat, so it is thin on screen) */
+  ringAt(px, py){
+    let best = null, bd = 1;
+    for (const b of this.bays){
+      if (Math.abs(wrap(b.a - this.yaw)) > 1.3) continue;
+      const q = this.project([Math.sin(b.a) * R * RING, FLOORY, -Math.cos(b.a) * R * RING]); if (!q) continue;
+      const rx = Math.max(64, 150 * this.P / q[2]), ry = Math.max(50, rx * .55), d = Math.hypot((px - q[0]) / rx, (py - q[1]) / ry);
+      if (d < bd){ bd = d; best = b.i; }
+    }
+    return best;
   }
   /* which bay, and which part of it, is under a point on the screen */
   hit(px, py){
@@ -256,22 +305,37 @@ export class Hall {
   }
   _events(){
     const cv = this.cv;
-    cv.addEventListener('pointerdown', (e) => { if (this.anim || this.paused) return; this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, lt: performance.now(), t: performance.now(), go: false, v: 0, i0: Math.round(this.target / SEG) }; this.vel = 0; try { cv.setPointerCapture(e.pointerId); } catch (er) {} });
+    cv.style.touchAction = 'none';
+    cv.addEventListener('pointerdown', (e) => {
+      if (this.paused || (this.anim && this.animKind !== 'back')) return;
+      this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, lt: performance.now(), t: performance.now(), go: false, far: 0, v: 0, i0: Math.round(this.target / SEG) }; this.vel = 0;
+      try { cv.setPointerCapture(e.pointerId); } catch (er) {}
+    });
     cv.addEventListener('pointermove', (e) => {
       const d = this.drag; if (!d || e.pointerId !== d.id) return;
-      if (!d.go && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8) d.go = true;
-      if (d.go){ const now = performance.now(), dx = e.clientX - d.lx, dy = -dx / this.P; this.yaw += dy; const dt = Math.max(1, now - d.lt) / 1000; d.v = d.v * .6 + (dy / dt) * .4; d.lx = e.clientX; d.lt = now; this.need = true; }
+      d.far = Math.max(d.far, Math.hypot(e.clientX - d.x, e.clientY - d.y));
+      if (!d.go && d.far > (e.pointerType === 'mouse' ? 6 : 12)) { d.go = true; d.lx = e.clientX; d.lt = performance.now(); }
+      if (d.go && !this.anim){ const now = performance.now(), dx = e.clientX - d.lx, dy = -dx / this.P; this.yaw += dy; const dt = Math.max(1, now - d.lt) / 1000; d.v = d.v * .6 + (dy / dt) * .4; d.lx = e.clientX; d.lt = now; this.need = true; }
     });
     const end = (e) => {
-      const d = this.drag; if (!d || e.pointerId !== d.id) return; this.drag = null;
-      if (d.go){
+      const d = this.drag; if (!d || e.pointerId !== d.id) return; this.drag = null; this.need = true;
+      const dt = performance.now() - d.t, up = e.type === 'pointerup', r = cv.getBoundingClientRect(), x = d.x - r.left, y = d.y - r.top;
+      // a tap, even with a finger that slips a little: the circle is the most forgiving target, then the bay in front, then a bay to the side
+      const ring = up && d.far < 30 && dt < 900 ? this.ringAt(x, y) : null;
+      if (ring !== null){ this.target = Math.round(this.yaw / SEG) * SEG; this.enter(ring); return; }
+      if (up && (!d.go || (d.far < 18 && dt < 450)) && dt < 900){
+        this.target = Math.round(this.yaw / SEG) * SEG;
+        const h = this.hit(x, y); if (!h) return;
+        if (h.bay === this.active && h.part !== 'wall') this.enter(h.bay);
+        else if (h.bay !== this.active){ if (h.part === 'window') this.enter(h.bay); else this.turn(Math.sign(wrap(h.bay * SEG - this.yaw))); }
+        return;
+      }
+      if (d.go && !this.anim){
         this.vel = performance.now() - d.lt < 90 ? Math.max(-5, Math.min(5, d.v)) : 0;
         let t = Math.round((this.yaw + this.vel * .2) / SEG); const dx = e.clientX - d.x;
         if (t === d.i0 && Math.abs(dx) > Math.max(56, this.vw * .16)) t = d.i0 - Math.sign(dx);      // a clear swipe always moves one bay
         this.target = t * SEG;
       }
-      else if (e.type === 'pointerup' && performance.now() - d.t < 500){ const r = cv.getBoundingClientRect(), h = this.hit(e.clientX - r.left, e.clientY - r.top); if (h && (h.part === 'ring' || h.part === 'window')) this.enter(h.bay); else if (h && h.bay !== this.active) this.turn(Math.sign(wrap(h.bay * SEG - this.yaw))); }
-      this.need = true;
     };
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
   }

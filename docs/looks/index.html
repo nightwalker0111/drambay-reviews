@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bathroom Looks | Drambay Rooms Studio</title>
+<meta name="description" content="Pick your tiles once and see them in every bathroom.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#F5F2EC">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Drambay Looks">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root { --red:#D71920; --ink:#343A3B; --bg:#F5F2EC; --stone:#D9D2C7; --white:#fff; --muted:#6F7574;
+  --display:'Newsreader', Georgia, 'Times New Roman', serif; --text:'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 var(--text); }
+body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
+header.top { display: flex; align-items: center; gap: 14px; padding: 18px 0 6px; }
+header.top img { width: 36px; height: auto; display: block; }
+header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.01em; flex: 1; }
+.quiet { border: 1px solid var(--stone); background: transparent; border-radius: 999px; padding: 9px 16px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+.quiet[hidden] { display: none; }
+.quiet.done { border-color: transparent; color: var(--muted); padding-right: 0; }
+.picks { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 14px 0 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.slot { display: flex; align-items: center; gap: 12px; text-align: left; background: var(--white); border: 1px solid transparent; border-radius: 14px; padding: 8px 12px 8px 8px; min-width: 0; min-height: 64px; }
+.slot:focus-visible, .quiet:focus-visible, .act:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.slot .sw { width: 48px; height: 48px; border-radius: 9px; background: var(--stone) center/cover; flex: none; }
+.slot span { min-width: 0; display: block; }
+.slot small { display: block; font-size: 12px; color: var(--muted); line-height: 1.2; }
+.slot b { display: block; font-weight: 500; font-size: 15px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid { columns: 3 320px; column-gap: 18px; padding: 8px 0 40px; }
+.card { break-inside: avoid; margin: 0 0 18px; display: block; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; }
+.card .ph { display: block; position: relative; border-radius: 16px; overflow: hidden; background: var(--stone); }
+.card canvas, .card img { display: block; width: 100%; height: auto; }
+.card img { position: absolute; inset: 0; height: 100%; object-fit: cover; filter: blur(14px) saturate(.6); transform: scale(1.1); transition: opacity .5s; }
+.card.ready img { opacity: 0; }
+.card figcaption, .card .nm { display: block; font: 400 17px/1.3 var(--display); padding: 10px 2px 0; }
+.note { color: var(--muted); font-size: 13px; padding: 0 0 36px; max-width: 60ch; }
+.tip { color: var(--muted); font-size: 13px; margin: 0; padding: 0 0 4px; }
+/* viewer */
+.viewer { position: fixed; inset: 0; z-index: 20; background: #1F2324; display: none; flex-direction: column; }
+.viewer.on { display: flex; }
+.stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 10px; position: relative; }
+.stage canvas { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 10px; display: block; }
+.x { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(31,35,36,.55); color: #fff; font-size: 24px; line-height: 1; z-index: 2; }
+.bar { background: var(--bg); padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.bar .picks { position: static; padding: 0; }
+.acts { display: flex; gap: 8px; }
+.act { border: 0; border-radius: 999px; padding: 12px 18px; font-weight: 600; font-size: 15px; background: var(--ink); color: #fff; white-space: nowrap; min-height: 48px; }
+.act.alt { background: transparent; color: var(--ink); border: 1px solid var(--stone); font-weight: 500; }
+.act.icon { padding: 12px 14px; }
+/* picker */
+.sheet { position: fixed; inset: 0; z-index: 30; display: none; background: rgba(31,35,36,.45); }
+.sheet.on { display: block; }
+.panel { position: absolute; left: 0; right: 0; bottom: 0; max-height: 86vh; background: var(--bg); border-radius: 20px 20px 0 0; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+.panel header { display: flex; align-items: center; gap: 12px; padding: 16px 16px 8px; }
+.panel h2 { font: 400 22px/1.2 var(--display); margin: 0; flex: 1; }
+.panel input { width: 100%; border: 1px solid var(--stone); background: var(--white); border-radius: 12px; padding: 12px 14px; font-size: 16px; }
+.search { padding: 4px 16px 10px; }
+.sizes { display: flex; gap: 8px; padding: 0 16px 10px; overflow-x: auto; }
+.sizes button { border: 1px solid var(--stone); background: transparent; border-radius: 999px; padding: 7px 14px; font-size: 14px; white-space: nowrap; }
+.sizes button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.list { overflow-y: auto; padding: 4px 16px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 12px; }
+.tile { border: 0; background: transparent; padding: 0; text-align: left; min-width: 0; }
+.tile i { display: block; aspect-ratio: 2/1; border-radius: 10px; background: var(--stone) center/cover; }
+.tile.sq i { aspect-ratio: 1/1; max-width: 60%; }
+.tile b { display: block; font-weight: 500; font-size: 14px; padding-top: 6px; line-height: 1.25; }
+.tile small { color: var(--muted); font-size: 12px; }
+.tile[aria-current="true"] i { outline: 2px solid var(--red); outline-offset: 2px; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px; z-index: 40; opacity: 0; pointer-events: none; transition: opacity .25s; max-width: 90vw; }
+.toast.on { opacity: 1; }
+@media (max-width: 720px) {
+  header.top h1 { font-size: 22px; }
+  .slot { flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px; min-height: 0; }
+  .slot .sw { width: 100%; height: 44px; }
+  .bar { grid-template-columns: 1fr; }
+  .acts { justify-content: stretch; } .acts .act { flex: 1; } .acts .act.icon { flex: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <img src="d-logo.png" alt="Drambay" width="36" height="34">
+    <h1>Bathroom Looks</h1>
+    <button class="quiet" id="install" hidden>Install app</button>
+    <button class="quiet" id="offline">Save for offline</button>
+  </header>
+  <p class="tip">Pick your tiles once. Every bathroom below wears them.</p>
+  <section class="picks" id="picks" aria-label="Your tiles"></section>
+  <main class="grid" id="grid"></main>
+  <p class="note">These rooms are design visualisations. The tile faces are the real Drambay designs. Shade and gloss are best confirmed on the tile itself at the showroom.</p>
+</div>
+
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Bathroom, enlarged">
+  <div class="stage" id="stage"><button class="x" id="close" aria-label="Close">×</button></div>
+  <div class="bar">
+    <section class="picks" id="vpicks" aria-label="Your tiles"></section>
+    <div class="acts">
+      <button class="act alt icon" id="swap" title="Swap the wall and the feature wall" aria-label="Swap the wall and the feature wall">⇄</button>
+      <button class="act alt" id="ask">Ask on WhatsApp</button>
+      <button class="act" id="share">Share picture</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="panel">
+    <header><h2 id="sheetTitle">Floor tile</h2><button class="quiet" id="sheetClose">Done</button></header>
+    <div class="search"><input id="q" type="search" placeholder="Search by name or code" autocomplete="off" aria-label="Search tiles"></div>
+    <div class="sizes" id="sizes"></div>
+    <div class="list" id="list"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

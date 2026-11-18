@@ -146,7 +146,21 @@ export class Hall {
       else { if (turn) x.rotate(Math.PI); x.drawImage(im, -tw / 2, -th / 2, tw, th); }
       x.restore();
     };
-    if (big === 1200 && small === 600){
+    if (big >= 2400){
+      // a slab: one seamless face, laid at the photo's own shape (the photo is a narrow strip of the slab: never stretched to the slab's width), every second strip mirrored so no line shows
+      const im = b.faces[0];
+      if (!im){ x.fillStyle = b.fill || '#D9D2C7'; x.fillRect(px, py, pw, ph); }
+      else {
+        const port = im.height > im.width, L_ = port ? im.height : im.width, S_ = port ? im.width : im.height, c = (this.o.slabCrop && this.o.slabCrop(d.code)) || [0, 0, 1, 1];
+        const t = document.createElement('canvas'); t.width = L_; t.height = S_; const tx = t.getContext('2d');
+        if (port){ tx.translate(L_, 0); tx.rotate(Math.PI / 2); } tx.drawImage(im, 0, 0);
+        const st = document.createElement('canvas'); st.width = Math.round(pw); st.height = Math.max(2, Math.round(pw * (S_ * (c[3] - c[1])) / (L_ * (c[2] - c[0]))));
+        st.getContext('2d').drawImage(t, c[0] * L_, c[1] * S_, (c[2] - c[0]) * L_, (c[3] - c[1]) * S_, 0, 0, st.width, st.height);      // only the clean part of the photo, the same part the kitchen lays
+        x.save(); x.beginPath(); x.rect(px, py, pw, ph); x.clip();
+        for (let r = 0, y = py + ph; y > py; r++){ y -= st.height; x.save(); if (r % 2){ x.translate(0, 2 * y + st.height); x.scale(1, -1); } x.drawImage(st, px, y); x.restore(); }
+        x.restore();
+      }
+    } else if (big === 1200 && small === 600){
       const cols = 2, rows = 3, tw = (pw - J * (cols - 1)) / cols, th = (ph - J * (rows - 1)) / rows;
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
         const n = r * cols + c, fi = (n * (nf > 4 ? 1 : (nf === 4 ? 3 : 1)) + (nf <= 2 ? 0 : r)) % nf;

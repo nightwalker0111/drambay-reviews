@@ -33,7 +33,7 @@ float h21(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); retu
 int planeId(vec2 px){ return int(texelFetch(uMaps, ivec2(clamp(px/uRes,0.,0.99999)*vec2(textureSize(uMaps,0))), 0).r*255./40. + .5); }
 // joint coverage (box filtered) and the tile cell
 float cellOf(int s, int k, vec2 uv, vec2 w, out vec2 c, out vec2 st){
-  vec2 tw = uPsw[k]==1 ? uTsz[s].yx : uTsz[s].xy; float j = uTj[s]; vec2 cw = tw + j;
+  vec2 tw = (uPsw[k]&1)==1 ? uTsz[s].yx : uTsz[s].xy; float j = (uPsw[k]&2)!=0 ? 0. : uTj[s]; vec2 cw = tw + j;   // uPsw: 1 = long side along v, 2 = seamless (a slab on a counter: no joint drawn)
   c = floor(uv/cw); vec2 f = uv - c*cw; vec2 d = min(f, cw-f);
   vec2 ww = max(w, vec2(1e-3));
   vec2 cov = clamp((min(d + ww*.5, vec2(j*.5)) - max(d - ww*.5, vec2(-j*.5))) / ww, 0., 1.);
@@ -65,21 +65,22 @@ vec3 faceTex(int s, vec3 q, vec2 gx, vec2 gy){
 vec3 tileAlbedo(int s, int k, vec2 uv, vec2 dx, vec2 dy){
   vec2 c, st; vec2 w = abs(dx) + abs(dy);
   float g = cellOf(s, k, uv, w, c, st);
-  bool sw = uPsw[k]==1; vec2 tw = sw ? uTsz[s].yx : uTsz[s].xy;
+  bool sw = (uPsw[k]&1)==1; bool sm = (uPsw[k]&2)!=0; vec2 tw = sw ? uTsz[s].yx : uTsz[s].xy;
   int n = uTn[s]; float hsh = h21(c + 17.*float(s) + 3.*float(k));
   int ci = int(c.x) , cj = int(c.y);
   int idx = n<=1 ? 0 : (n==2 ? (ci+cj) : (ci + 2*cj));
   idx = ((idx % n) + n) % n;
-  float flip = step(.5, hsh);
+  // seamless: every second piece is mirrored, so the face carries on across the meeting line with no step
+  vec2 flip = sm ? mod(c, 2.) : vec2(step(.5, hsh));
   vec2 q = mix(st, 1.-st, flip); vec2 sg = mix(vec2(1.), vec2(-1.), flip);
   vec2 gx = dx/tw*sg, gy = dy/tw*sg;
-  if (n <= 1){   // one face only: each tile takes a slightly different crop of it, so the same vein does not repeat tile after tile
+  if (n <= 1 && !sm){   // one face only: each tile takes a slightly different crop of it, so the same vein does not repeat tile after tile
     const float jit = .12; vec2 off = vec2(h21(c + 31.7), h21(c*1.9 + 77.1))*jit;
     q = off + q*(1. - jit); gx *= 1. - jit; gy *= 1. - jit;
   }
   if (sw){ q = q.yx; gx = gx.yx; gy = gy.yx; }
   vec3 a = faceTex(s, vec3(q, float(idx)), gx, gy);
-  a *= 1. + (h21(c*1.7 + 9.1) - .5)*.03;
+  if (!sm) a *= 1. + (h21(c*1.7 + 9.1) - .5)*.03;
   // joint: tone drifts a little along each run, never perfect
   vec3 gr = uTg[s] * (1. + (h21(vec2(c.x*.37, c.y*.61) + 5.) - .5)*.09);
   return mix(a, gr, g);
@@ -112,8 +113,9 @@ void main(){
 }`;
 
 const FS_B = COMMON + `
-uniform sampler2D uA; uniform float uTopY; uniform float uLods;
+uniform sampler2D uA; uniform float uTopY; uniform float uLods; uniform float uFar;
 uniform int uPcut[${MAXP}];   // stand-ins for things on the floor: 1 = counts only where the object's own cut-out is (table), 2 = soft-edged face (sofa)
+uniform float uPcap[${MAXP}];   // a stand-in whose upper part the camera cannot see (an island's body under its top): a mirror image reaching above this height keeps showing the band just below it
 uniform vec4 uWater; uniform vec2 uWater2; uniform float uGrain;
 uniform sampler2D uDepth; uniform vec3 uPar;   // tilt: xy = shift, z = zoom margin (0 = off)
 vec3 srcA(vec2 uv, float lod){ return textureLod(uA, vec2(uv.x, 1.-uv.y), lod).rgb; }
@@ -131,12 +133,14 @@ float objA(vec2 sp, float r){   // object cut-out alpha, softened over r px
 }
 vec3 trace(vec3 Pw, vec3 Rd, int skip, float lod){
   float best = 1e9; vec2 s1 = vec2(1e9, 0.), s2 = vec2(1e9, 0.);   // nearest wall; the two nearest stand-ins (distance, cover)
+  vec3 drop = vec3(0.);
   for (int i=0;i<${MAXP};i++){
     if (i>=uNP) break; if (i==skip) continue;
     float den = dot(Rd,uPn[i]); if (den > -1e-5) continue;
     float tt = dot(uPo[i]-Pw, uPn[i])/den; if (tt < 1.) continue;
     vec3 q = Pw + Rd*tt - uPo[i]; float u = dot(q,uPeu[i]), v = dot(q,uPev[i]);
-    if (u < uPext[i].x || u > uPext[i].y || v < uPext[i].z || v > uPext[i].w) continue;
+    float vt = uPext[i].w; if (uPcap[i] > 0. && dot(Pw - uPo[i], uPev[i]) < vt) vt = 1e9;   // seen from below its top, such a body has no upper end (the top over it hides the rest)
+    if (u < uPext[i].x || u > uPext[i].y || v < uPext[i].z || v > vt) continue;
     if (uPcut[i] > 0){
       // stand-in for something standing on the floor (table, sofa face): laid softly over whatever is behind it, never a hard box
       if (tt >= s2.x) continue;
@@ -147,12 +151,12 @@ vec3 trace(vec3 Pw, vec3 Rd, int skip, float lod){
       if (tt < s1.x){ s2 = s1; s1 = vec2(tt, a); } else s2 = vec2(tt, a);
       continue;
     }
-    if (tt < best) best = tt;
+    if (tt < best){ best = tt; drop = uPcap[i] > 0. ? uPev[i]*max(0., v - uPcap[i]) : vec3(0.); }
   }
-  if (Rd.y > 1e-5){ float tt = (uTopY - Pw.y)/Rd.y; if (tt > 1. && tt < best) best = tt; }
+  if (Rd.y > 1e-5){ float tt = (uTopY - Pw.y)/Rd.y; if (tt > 1. && tt < best){ best = tt; drop = vec3(0.); } }
   // the part of the room behind the camera is unknown: one calm tone (the frame's own average, a little darker), no edges
-  vec3 far = srcA(vec2(.5), 20.) * .62;
-  vec3 c = seen(Pw, Rd, best, lod, far);
+  vec3 far = srcA(vec2(.5), 20.) * uFar;
+  vec3 c = seen(Pw - drop, Rd, best, lod, far);
   if (s2.x < best) c = mix(c, seen(Pw, Rd, s2.x, lod, far), s2.y);
   if (s1.x < best) c = mix(c, seen(Pw, Rd, s1.x, lod, far), s1.y);
   return c;
@@ -177,7 +181,7 @@ void main(){
       vec3 Pw = uPo[k] + uPeu[k]*ur.x + uPev[k]*ur.y;
       vec3 Rd = reflect(Dn, N);
       float a1 = (h21(c + 11.3) - .5)*2., a2 = (h21(c*1.3 + 4.7) - .5)*2.;
-      Rd = normalize(Rd + (uPeu[k]*a1 + uPev[k]*a2) * uTlh[s].x * 1.6);
+      if ((uPsw[k]&2)==0) Rd = normalize(Rd + (uPeu[k]*a1 + uPev[k]*a2) * uTlh[s].x * 1.6);   // tile-to-tile tilt: not on one seamless slab
       float lod = uTfin[s].w + uLods;
       vec3 rf = .6*trace(Pw, Rd, k, lod) + .4*trace(Pw, Rd, k, lod + 1.7);
       float cosv = clamp(dot(-Dn, N), 0., 1.);
@@ -235,6 +239,40 @@ export function groutFor(rgb){
   return [94, 92, 92];
 }
 const toLin = v => { v /= 255; return v <= .04045 ? v/12.92 : Math.pow((v+.055)/1.055, 2.4); };
+
+// slab face photos that carry a reflection of something (a bowl, a plant) or a border: only this part of the picture is laid (x0, y0, x1, y1 of the picture lying long side across)
+export const SLAB_CLEAN = { 'DRB-8024-001': [.15, .36, 1, 1], 'DRB-8024-002': [.15, .12, 1, 1], 'DRB-8024-003': [0, 0, 1, .97] };   // 003: a light strip along one edge of the photo
+// take the slow light-to-dark drift out of a face picture: each small block's middle value is brought to the picture's middle value
+function evenOut(cx, w, h){
+  const B = 16, gw = Math.ceil(w/B), gh = Math.ceil(h/B), img = cx.getImageData(0, 0, w, h), d = img.data;
+  const g = new Float32Array(gw*gh*3), hist = new Uint16Array(256);
+  for (let c = 0; c < 3; c++) for (let by = 0; by < gh; by++) for (let bx = 0; bx < gw; bx++){
+    hist.fill(0); let n = 0;
+    for (let y = by*B, y1 = Math.min(h, y + B); y < y1; y++) for (let x = bx*B, x1 = Math.min(w, x + B); x < x1; x++){ hist[d[(y*w + x)*4 + c]]++; n++; }
+    let k = 0, acc = 0; while (acc + hist[k] < n/2) acc += hist[k++];
+    g[(by*gw + bx)*3 + c] = k;
+  }
+  // soften the grid (3 x 3), then its middle value is the slab's colour
+  const s = new Float32Array(g.length), mid = [0, 0, 0];
+  for (let c = 0; c < 3; c++){
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++){
+      let a = 0, n = 0; for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++){ const xx = x + i, yy = y + j; if (xx < 0 || yy < 0 || xx >= gw || yy >= gh) continue; a += g[(yy*gw + xx)*3 + c]; n++; }
+      s[(y*gw + x)*3 + c] = a/n;
+    }
+    const v = []; for (let i = c; i < s.length; i += 3) v.push(s[i]); v.sort((a, b) => a - b); mid[c] = v[v.length >> 1];
+  }
+  for (let y = 0; y < h; y++){
+    const fy = Math.min(gh - 1, Math.max(0, (y + .5)/B - .5)), y0 = Math.floor(fy), y1 = Math.min(gh - 1, y0 + 1), ty = fy - y0;
+    for (let x = 0; x < w; x++){
+      const fx = Math.min(gw - 1, Math.max(0, (x + .5)/B - .5)), x0 = Math.floor(fx), x1 = Math.min(gw - 1, x0 + 1), tx = fx - x0, o = (y*w + x)*4;
+      for (let c = 0; c < 3; c++){
+        const lo = (s[(y0*gw + x0)*3 + c]*(1 - tx) + s[(y0*gw + x1)*3 + c]*tx)*(1 - ty) + (s[(y1*gw + x0)*3 + c]*(1 - tx) + s[(y1*gw + x1)*3 + c]*tx)*ty;
+        d[o + c] = Math.max(0, Math.min(255, d[o + c] - lo + mid[c]));      // drift is light added on top of the face: it is taken off, not scaled
+      }
+    }
+  }
+  cx.putImageData(img, 0, 0);
+}
 
 async function loadBitmap(url){
   const r = await fetch(url, { mode: 'cors' }); if (!r.ok) throw new Error(url + ' ' + r.status);
@@ -308,12 +346,19 @@ export class Engine {
       const levels = Math.floor(Math.log2(Math.max(Lp, Sp))) + 1;
       gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.SRGB8_ALPHA8, Lp, Sp, bmps.length);
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
-      let avg = [0, 0, 0];
+      // a plain or speckled slab has one even colour; its photo often does not (window light, a reflection across a polished face).
+      // Laid over a whole counter that unevenness would read as stains, so the slow drift is taken out and the colour and speckle stay.
+      const even = long >= 2400 && /plain|speckle|terrazzo/i.test(design.look || '');
+      const clean = SLAB_CLEAN[design.code] || null, cw = clean ? clean[2] - clean[0] : 1, ch = clean ? clean[3] - clean[1] : 1;
+      let avg = [0, 0, 0]; const ratio = Math.min(bmps[0].width, bmps[0].height) / Math.max(bmps[0].width, bmps[0].height);   // the face picture's own shape
       bmps.forEach((b, i) => {
         cx.save(); cx.clearRect(0, 0, Lp, Sp);
         if (b.height > b.width*1.05){ cx.translate(Lp, 0); cx.rotate(Math.PI/2); cx.drawImage(b, 0, 0, Sp, Lp); }   // portrait face: lay it long side across
         else cx.drawImage(b, 0, 0, Lp, Sp);
         cx.restore();
+        if (clean){ const t = document.createElement('canvas'); t.width = Lp; t.height = Sp; t.getContext('2d').drawImage(cv, 0, 0);
+          cx.clearRect(0, 0, Lp, Sp); cx.drawImage(t, clean[0]*Lp, clean[1]*Sp, (clean[2] - clean[0])*Lp, (clean[3] - clean[1])*Sp, 0, 0, Lp, Sp); }
+        if (even) evenOut(cx, Lp, Sp);
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, Lp, Sp, 1, gl.RGBA, gl.UNSIGNED_BYTE, cv);
         if (i === 0){
           const s = document.createElement('canvas'); s.width = 24; s.height = 12; const sx = s.getContext('2d'); sx.drawImage(cv, 0, 0, 24, 12);
@@ -328,7 +373,7 @@ export class Engine {
       gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       if (this.aniso) gl.texParameterf(gl.TEXTURE_2D_ARRAY, this.aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(this.aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
       const fin = finishOf(design);
-      return { tex, n: bmps.length, long, short, joint: long >= 1200 ? 2 : 3, grout: groutFor(avg), avg, fin, design };
+      return { tex, n: bmps.length, long, short, joint: long >= 1200 ? 2 : 3, grout: groutFor(avg), avg, fin, design, slab: [long*cw, long*ratio*ch] };   // slab = the real size of what the face picture shows (mm), for a seamless lay
     })();
     this.sets.set(key, pr);
     pr.catch(() => this.sets.delete(key));
@@ -367,11 +412,11 @@ export class Engine {
     const role = { floor: 0, wall: 1, feature: 2, none: -1 };
     const np = Math.min(MAXP, j.planes.length);
     const fl = (a) => new Float32Array(a.flat());
-    const pset = [], psw = [], poff = [];
+    const pset = [], psw = [], poff = [], seam = [false, false, false];
     j.planes.slice(0, np).forEach((p, i) => {
       const s = role[p.role]; pset.push(s);
       if (s < 0){ psw.push(0); poff.push([0, 0]); return; }
-      const T = S[s]; const sw = p.kind === 'floor' && p.long === 'v' ? 1 : 0; psw.push(sw);
+      const T = S[s]; const sw = p.kind === 'floor' && p.long === 'v' ? 1 : 0; psw.push(sw | (p.seamless ? 2 : 0)); if (p.seamless) seam[s] = true;
       const tw = sw ? T.short : T.long, th = sw ? T.long : T.short;
       const wd = p.kind === 'floor' ? (p.span ? p.span[0] : 0) : p.ext[1] - p.ext[0];
       poff.push([Engine.startOff(wd, tw, T.joint) + (p.uoff || 0), (p.voff || 0)]);
@@ -385,8 +430,9 @@ export class Engine {
       gl.uniform3fv(u.uPev, fl(j.planes.slice(0, np).map(p => p.ev))); gl.uniform3fv(u.uPn, fl(j.planes.slice(0, np).map(p => p.n)));
       if (u.uPext) gl.uniform4fv(u.uPext, fl(j.planes.slice(0, np).map(p => p.ext.map(v => Math.max(-1e7, Math.min(1e7, v))))));
       if (u.uPcut) gl.uniform1iv(u.uPcut, new Int32Array(j.planes.slice(0, np).map(p => p.cut | 0)));
+      if (u.uPcap) gl.uniform1fv(u.uPcap, new Float32Array(j.planes.slice(0, np).map(p => +p.cap || 0)));
       gl.uniform2fv(u.uPoff, fl(poff)); gl.uniform1iv(u.uPset, new Int32Array(pset)); gl.uniform1iv(u.uPsw, new Int32Array(psw));
-      gl.uniform2fv(u.uTsz, fl(S.map(T => [T.long, T.short])));
+      gl.uniform2fv(u.uTsz, fl(S.map((T, i) => seam[i] ? T.slab : [T.long, T.short])));   // a seamless slab keeps its picture's own shape: a narrow face picture is never stretched to the slab's width
       if (u.uTn) gl.uniform1iv(u.uTn, new Int32Array(S.map(T => T.n)));
       gl.uniform1fv(u.uTj, new Float32Array(S.map(T => T.joint)));
       if (u.uTg) gl.uniform3fv(u.uTg, fl(S.map(T => T.grout.map(toLin))));
@@ -405,7 +451,7 @@ export class Engine {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.activeTexture(gl.TEXTURE7); gl.bindTexture(gl.TEXTURE_2D, this.texA); gl.generateMipmap(gl.TEXTURE_2D);
     const u = common(this.pB); gl.uniform1i(u.uA, 7);
-    gl.uniform1f(u.uTopY, (j.top || 2900) - j.h);
+    gl.uniform1f(u.uTopY, (j.top || 2900) - j.h); if (u.uFar) gl.uniform1f(u.uFar, j.far || .62);
     gl.uniform1f(u.uLods, Math.log2(Math.max(scale, .05)) * 1.0);
     const wt = live.water; gl.uniform4f(u.uWater, wt ? wt.head[0] : 0, wt ? wt.head[1] : 0, on && wt && opts.water !== false ? wt.r : 0, 1);
     gl.uniform2f(u.uWater2, wt ? wt.floor : 1, wt ? wt.spread : 0);

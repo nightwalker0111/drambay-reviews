@@ -91,6 +91,16 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 .hall .nav, .hall .vtop { transition: opacity .25s; }
 .hall.going .nav, .hall.going .vtop { opacity: 0; pointer-events: none; }
 .hsh { display: flex; gap: 8px; align-items: center; } .hsh svg { transition: transform .5s cubic-bezier(.2,.7,.2,1); } .hsh.spin svg { transform: rotate(180deg); }
+.hall button.where { align-items: center; gap: 9px; cursor: pointer; }
+.hall button.where svg { opacity: .8; transition: transform .2s; } .hall button.where[aria-expanded="true"] svg { transform: rotate(180deg); }
+.hall button.where i { margin-left: 3px; }
+.hmenu { position: absolute; z-index: 2; left: calc(16px + env(safe-area-inset-left)); top: calc(68px + env(safe-area-inset-top)); border-radius: 20px; padding: 6px; display: grid; min-width: 232px; }
+.hmenu[hidden], .hall.going .hmenu { display: none; }
+.hmenu button { border: 0; background: none; color: #fff; text-align: left; font: 400 17px/1.2 var(--display); padding: 12px 14px; border-radius: 14px; min-height: 46px; }
+.hmenu button[aria-current="true"] { background: rgba(255,255,255,.17); }
+.nav[hidden] { display: none; }
+.viewer.fo #swap { display: none; }
+@media (max-width: 520px){ .hsh span { display: none; } .hsh { padding: 0 13px; } }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .viewer.fadein { animation: vin .36s ease both; }
 @keyframes vin { from { opacity: 0; } to { opacity: 1; } }
@@ -154,7 +164,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
   <p class="note">These rooms are design visualisations. The tile faces are the real Drambay designs. Shade and gloss are best confirmed on the tile itself at the showroom. <button id="walk" type="button">Open the 360° display hall</button></p>
 </div>
 
-<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Bathroom, full screen">
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Room, full screen">
   <div class="vbg" id="vbg"></div>
   <div class="stage" id="stage"><div class="frame" id="frame"></div></div>
   <div class="vtop chrome">
@@ -162,8 +172,8 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
     <button class="vbtn glass" id="tilt" type="button" aria-pressed="false" hidden>3D tilt</button>
     <button class="vbtn x glass" id="close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
   </div>
-  <button class="nav prev glass chrome" id="prev" type="button" aria-label="Previous bathroom"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-  <button class="nav next glass chrome" id="next" type="button" aria-label="Next bathroom"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  <button class="nav prev glass chrome" id="prev" type="button" aria-label="Previous room"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <button class="nav next glass chrome" id="next" type="button" aria-label="Next room"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
   <div class="bar chrome">
     <section class="picks" id="vpicks" aria-label="Your tiles"></section>
     <button class="round" id="swap" type="button" title="Swap the wall and the feature wall" aria-label="Swap the wall and the feature wall"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/></svg></button>
@@ -177,10 +187,11 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 <div class="hall" id="hall" role="dialog" aria-modal="true" aria-label="Display hall. Drag to look around.">
   <canvas id="hallcv"></canvas>
   <div class="vtop">
-    <span class="where glass"><b style="font-weight:400">Display hall</b><i id="hcount"></i></span>
+    <button class="where glass" id="hspace" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="hmenu"><b id="hsname" style="font-weight:400">Bathrooms</b><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9l7 7 7-7"/></svg><i id="hcount"></i></button>
     <button class="vbtn glass hsh" id="hshuffle" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h3.5c5 0 6 10 11 10H21"/><path d="M3 17h3.5c1.6 0 2.8-1 3.9-2.4M13.6 9.4C14.7 8 15.9 7 17.5 7H21"/><path d="M18 4l3 3-3 3M18 14l3 3-3 3"/></svg><span>Surprise me</span></button>
     <button class="vbtn x glass" id="hclose" type="button" aria-label="Close the display hall"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
   </div>
+  <div class="hmenu glass" id="hmenu" role="menu" aria-label="Choose a space" hidden></div>
   <button class="nav prev glass" id="hprev" type="button" aria-label="Previous display"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
   <button class="nav next glass" id="hnext" type="button" aria-label="Next display"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
   <button class="sr" id="hstep" type="button">Step into this bathroom</button>

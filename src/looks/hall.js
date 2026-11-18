@@ -70,7 +70,7 @@ void main(){
 }`;
 
 export class Hall {
-  /* opts: bays [{design, name, meta, joint:[r,g,b], base}], faceUrl(name), paint(bay, w) -> promise of a picture (drawn at once), onEnter(i), still (bool) */
+  /* opts: bays [{design (size, finish, faces, pair), name, meta, joint:[r,g,b], base}], faceUrl(name), paint(bay, w) -> promise of a picture (drawn at once), onEnter(i), still (bool) */
   constructor(canvas, opts){
     N = opts.bays.length; SEG = Math.PI * 2 / N; R = WF / 2 / Math.tan(Math.PI / N);
     this.cv = canvas; this.o = opts; this.bays = opts.bays.map((b, i) => ({ ...b, i, a: i * SEG, faces: [], room: null, dirty: true, tex: null, cv: document.createElement('canvas') }));
@@ -135,15 +135,30 @@ export class Hall {
     x.fillText(b.name, lx + 30, ly + 77);
     x.fillStyle = MUTED; x.textAlign = 'right'; x.font = `500 27px "Hanken Grotesk", system-ui, sans-serif`; x.fillText(b.meta, lx + lw - 30, ly + 75);
     // tile panel: real faces, long side across, with joints
-    const [px, py, pw, ph] = PAN, J = 2.2, cols = 2, rows = 3, tw = (pw - J * (cols - 1)) / cols, th = (ph - J * (rows - 1)) / rows, nf = d.faces.slice(0, 6).length;
+    const [px, py, pw, ph] = PAN, J = 2.2, nf = d.faces.slice(0, 6).length, big = Math.max(...d.size), small = Math.min(...d.size);
     x.fillStyle = `rgb(${b.joint.join(',')})`; x.fillRect(px, py, pw, ph);
-    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
-      const n = r * cols + c, fi = (n * (nf > 4 ? 1 : (nf === 4 ? 3 : 1)) + (nf <= 2 ? 0 : r)) % nf, im = b.faces[fi], cx = px + c * (tw + J), cy = py + r * (th + J);
-      const turn = nf < 6 && ((n * 7 + r) % 3 === 1 || (nf === 1 && n % 2 === 1));
-      if (!im){ x.fillStyle = b.fill || '#D9D2C7'; x.fillRect(cx, cy, tw, th); continue; }
+    const put = (im, cx, cy, tw, th, turn) => {
+      if (!im){ x.fillStyle = b.fill || '#D9D2C7'; x.fillRect(cx, cy, tw, th); return; }
       x.save(); x.translate(cx + tw / 2, cy + th / 2);
-      if (im.height > im.width * 1.05) x.rotate(Math.PI / 2 + (turn ? Math.PI : 0)), x.drawImage(im, -th / 2, -tw / 2, th, tw);
+      if (im.height > im.width * 1.05 && tw > th * 1.05) x.rotate(Math.PI / 2 + (turn ? Math.PI : 0)), x.drawImage(im, -th / 2, -tw / 2, th, tw);
       else { if (turn) x.rotate(Math.PI); x.drawImage(im, -tw / 2, -th / 2, tw, th); }
+      x.restore();
+    };
+    if (big === 1200 && small === 600){
+      const cols = 2, rows = 3, tw = (pw - J * (cols - 1)) / cols, th = (ph - J * (rows - 1)) / rows;
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
+        const n = r * cols + c, fi = (n * (nf > 4 ? 1 : (nf === 4 ? 3 : 1)) + (nf <= 2 ? 0 : r)) % nf;
+        put(b.faces[fi], px + c * (tw + J), py + r * (th + J), tw, th, nf < 6 && ((n * 7 + r) % 3 === 1 || (nf === 1 && n % 2 === 1)));
+      }
+    } else {
+      // every other size is laid to the same scale from the bottom left corner, the way a floor starts: what does not fit is cut at the right and at the top.
+      // (500 mm tiles are drawn 4 % small so five fit across.) A dark + light pair is laid as its checker.
+      const k = .375 * (big === 500 ? .96 : 1), cw = big * k, chh = small * k, cols = Math.ceil(pw / cw - .01), rows = Math.ceil(ph / chh - .01);
+      x.save(); x.beginPath(); x.rect(px, py, pw, ph); x.clip();
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
+        const n = r * cols + c, fi = d.pair ? (r + c) % 2 : (n + (nf > 2 ? r : 0)) % nf;
+        put(b.faces[fi], px + c * cw + J / 2, py + ph - (r + 1) * chh + J / 2, cw - J, chh - J, !d.pair && nf < 4 && (n * 7 + r) % 3 === 1);
+      }
       x.restore();
     }
     g = x.createLinearGradient(0, py, 0, py + ph); g.addColorStop(0, 'rgba(20,22,23,.34)'); g.addColorStop(.035, 'rgba(20,22,23,0)'); g.addColorStop(.036, 'rgba(255,255,255,.07)'); g.addColorStop(.45, 'rgba(255,255,255,0)'); g.addColorStop(.72, 'rgba(20,22,23,0)'); g.addColorStop(1, 'rgba(20,22,23,.10)');

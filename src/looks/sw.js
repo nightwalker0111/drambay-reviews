@@ -1,6 +1,6 @@
-/* Try Your Tiles (bathrooms): works with no network once opened (shell + rooms), tile faces after "Save for offline". */
-const SHELL = 'drb-shell-v5', FACES = 'drb-faces-v1', FONTS = 'drb-fonts-v1';
-const ROOMS = ['r7', 'r3', 'r6'];
+/* Try Your Tiles (bathrooms, and the hall's living room, terrace and driveway): works with no network once opened (shell + rooms), tile faces after "Save for offline". */
+const SHELL = 'drb-shell-v6', FACES = 'drb-faces-v1', FONTS = 'drb-fonts-v1';
+const ROOMS = ['r7', 'r3', 'r6', 'l1', 't1', 'p1'];
 const FILES = ['./', 'index.html', 'app.js', 'engine.js', 'hall.js', 'designs.json', 'mh.json', 'tones.json', 'manifest.webmanifest', 'd-logo.png', 'logo-white.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   ...ROOMS.flatMap(r => ['room.json', 'base.jpg', 'light.jpg', 'maps.png', 'obj.webp', 'thumb.jpg', 'depth.jpg'].map(f => `rooms/${r}/${f}`))];
 

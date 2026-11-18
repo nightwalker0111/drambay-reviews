@@ -3,7 +3,7 @@
    face x the room's own light, real joints, then gloss reflections traced inside the room box.
    Objects (fittings, glass, mirror) sit back on top from a cut-out layer. */
 
-const MAXP = 8;
+const MAXP = 12;
 
 const VS = `#version 300 es
 in vec2 p; out vec2 vUV;
@@ -113,28 +113,49 @@ void main(){
 
 const FS_B = COMMON + `
 uniform sampler2D uA; uniform float uTopY; uniform float uLods;
+uniform int uPcut[${MAXP}];   // stand-ins for things on the floor: 1 = counts only where the object's own cut-out is (table), 2 = soft-edged face (sofa)
 uniform vec4 uWater; uniform vec2 uWater2; uniform float uGrain;
 uniform sampler2D uDepth; uniform vec3 uPar;   // tilt: xy = shift, z = zoom margin (0 = off)
 vec3 srcA(vec2 uv, float lod){ return textureLod(uA, vec2(uv.x, 1.-uv.y), lod).rgb; }
+vec2 toPx(vec3 Q, out float z){ z = dot(Q,uF); return vec2(uCam.y + uCam.x*dot(Q,uR)/max(z,1.), uCam.z - uCam.x*dot(Q,uU)/max(z,1.)) / uRes; }
+vec3 seen(vec3 Pw, vec3 Rd, float tt, float lod, vec3 far){
+  if (tt > 9e8) return far;
+  float z; vec2 sp = toPx(Pw + Rd*tt, z);
+  if (z < 50.) return far;
+  vec2 e = smoothstep(vec2(-.03), vec2(.2), sp) * smoothstep(vec2(-.03), vec2(.2), 1.-sp);
+  return mix(far, srcA(clamp(sp, 0., 1.), lod), e.x*e.y);
+}
+float objA(vec2 sp, float r){   // object cut-out alpha, softened over r px
+  vec2 d = vec2(r)/uRes;
+  return (texture(uObj, sp).a*2. + texture(uObj, sp + vec2(d.x,0.)).a + texture(uObj, sp - vec2(d.x,0.)).a + texture(uObj, sp + vec2(0.,d.y)).a + texture(uObj, sp - vec2(0.,d.y)).a) / 6.;
+}
 vec3 trace(vec3 Pw, vec3 Rd, int skip, float lod){
-  float best = 1e9;
+  float best = 1e9; vec2 s1 = vec2(1e9, 0.), s2 = vec2(1e9, 0.);   // nearest wall; the two nearest stand-ins (distance, cover)
   for (int i=0;i<${MAXP};i++){
     if (i>=uNP) break; if (i==skip) continue;
     float den = dot(Rd,uPn[i]); if (den > -1e-5) continue;
-    float tt = dot(uPo[i]-Pw, uPn[i])/den; if (tt < 1. || tt >= best) continue;
+    float tt = dot(uPo[i]-Pw, uPn[i])/den; if (tt < 1.) continue;
     vec3 q = Pw + Rd*tt - uPo[i]; float u = dot(q,uPeu[i]), v = dot(q,uPev[i]);
     if (u < uPext[i].x || u > uPext[i].y || v < uPext[i].z || v > uPext[i].w) continue;
-    best = tt;
+    if (uPcut[i] > 0){
+      // stand-in for something standing on the floor (table, sofa face): laid softly over whatever is behind it, never a hard box
+      if (tt >= s2.x) continue;
+      float a = smoothstep(0., 90., uPext[i].w - v);
+      if (uPcut[i] == 1){ float zc; vec2 sc = toPx(Pw + Rd*tt, zc); if (zc < 50.) continue; a = smoothstep(.2, .8, objA(sc, 5.)); }
+      else a *= smoothstep(0., 70., u - uPext[i].x) * smoothstep(0., 70., uPext[i].y - u);
+      if (a < .004) continue;
+      if (tt < s1.x){ s2 = s1; s1 = vec2(tt, a); } else s2 = vec2(tt, a);
+      continue;
+    }
+    if (tt < best) best = tt;
   }
   if (Rd.y > 1e-5){ float tt = (uTopY - Pw.y)/Rd.y; if (tt > 1. && tt < best) best = tt; }
   // the part of the room behind the camera is unknown: one calm tone (the frame's own average, a little darker), no edges
   vec3 far = srcA(vec2(.5), 20.) * .62;
-  if (best > 9e8) return far;
-  vec3 Q = Pw + Rd*best; float z = dot(Q,uF);
-  if (z < 50.) return far;
-  vec2 sp = vec2(uCam.y + uCam.x*dot(Q,uR)/z, uCam.z - uCam.x*dot(Q,uU)/z) / uRes;
-  vec2 e = smoothstep(vec2(-.03), vec2(.2), sp) * smoothstep(vec2(-.03), vec2(.2), 1.-sp);
-  return mix(far, srcA(clamp(sp, 0., 1.), lod), e.x*e.y);
+  vec3 c = seen(Pw, Rd, best, lod, far);
+  if (s2.x < best) c = mix(c, seen(Pw, Rd, s2.x, lod, far), s2.y);
+  if (s1.x < best) c = mix(c, seen(Pw, Rd, s1.x, lod, far), s1.y);
+  return c;
 }
 void main(){
   // 3D feel: the finished picture is shifted by depth (near things move more than far ones)
@@ -362,6 +383,7 @@ export class Engine {
       gl.uniform3fv(u.uPo, fl(j.planes.slice(0, np).map(p => p.o))); gl.uniform3fv(u.uPeu, fl(j.planes.slice(0, np).map(p => p.eu)));
       gl.uniform3fv(u.uPev, fl(j.planes.slice(0, np).map(p => p.ev))); gl.uniform3fv(u.uPn, fl(j.planes.slice(0, np).map(p => p.n)));
       if (u.uPext) gl.uniform4fv(u.uPext, fl(j.planes.slice(0, np).map(p => p.ext.map(v => Math.max(-1e7, Math.min(1e7, v))))));
+      if (u.uPcut) gl.uniform1iv(u.uPcut, new Int32Array(j.planes.slice(0, np).map(p => p.cut | 0)));
       gl.uniform2fv(u.uPoff, fl(poff)); gl.uniform1iv(u.uPset, new Int32Array(pset)); gl.uniform1iv(u.uPsw, new Int32Array(psw));
       gl.uniform2fv(u.uTsz, fl(S.map(T => [T.long, T.short])));
       if (u.uTn) gl.uniform1iv(u.uTn, new Int32Array(S.map(T => T.n)));

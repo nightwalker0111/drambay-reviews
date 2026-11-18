@@ -1,5 +1,5 @@
 /* Try Your Tiles (bathrooms, and the hall's kitchens, living room, terrace and driveway): works with no network once opened (shell + rooms), tile faces after "Save for offline". */
-const SHELL = 'drb-shell-v14', FACES = 'drb-faces-v1', FONTS = 'drb-fonts-v1';
+const SHELL = 'drb-shell-v15', FACES = 'drb-faces-v1', FONTS = 'drb-fonts-v1';
 const ROOMS = ['r7', 'r3', 'r6', 'l1', 't1', 'p1', 'k1', 'k2'];
 const FILES = ['./', 'index.html', 'app.js', 'engine.js', 'hall.js', 'assets.js', 'designs.json', 'mh.json', 'tones.json', 'manifest.webmanifest', 'd-logo.png', 'logo-white.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   ...ROOMS.flatMap(r => ['room.json', 'base.jpg', 'light.jpg', 'maps.png', 'obj.webp', 'thumb.jpg', 'depth.jpg'].map(f => `rooms/${r}/${f}`))];
@@ -27,11 +27,16 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => put(FACES, req, res))));
   } else if (url.hostname.endsWith('gstatic.com') || url.hostname.endsWith('googleapis.com')){
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => put(FONTS, req, res)).catch(() => new Response('', { status: 504 }))));
-  } else if (url.origin === location.origin){            // app shell: answer from the saved copy, refresh it quietly
+  } else if (url.origin === location.origin){
+    // The tool's own page, scripts and lists: fresh from the network first, so a visitor who comes back after a release sees the new version at once.
+    // The saved copy answers only when the network does not (offline, or no answer within 4 seconds). Pictures: the saved copy first, refreshed quietly.
+    const code = req.mode === 'navigate' || /(\/|\.(js|json|html|webmanifest))$/.test(url.pathname);
     e.respondWith(caches.open(SHELL).then(async c => {
       const hit = await c.match(req, { ignoreSearch: req.mode === 'navigate' });
-      const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => hit);
-      return hit || net;
+      const net = fetch(req, code ? { cache: 'no-cache' } : {}).then(res => { if (res.ok) c.put(req, res.clone()); return res; });
+      if (!hit) return net;
+      if (!code) { net.catch(() => {}); return hit; }
+      return Promise.race([net.catch(() => hit), new Promise(r => setTimeout(() => r(hit), 4000))]);
     }));
   }
 });

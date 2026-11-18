@@ -106,6 +106,11 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 @keyframes vin { from { opacity: 0; } to { opacity: 1; } }
 .note button { border: 0; background: none; padding: 0; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; font-size: inherit; }
 /* picker */
+.vlogo { display: none; }
+.viewer.one .vlogo { display: flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; background: rgba(22,25,26,.78); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.vlogo img { height: 26px; width: auto; display: block; }
+.viewer.one #close, .viewer.one #vshuffle, .viewer.one #swap { display: none; }
+@media (max-width: 520px){ .viewer.one .vtop { flex-wrap: wrap; } .viewer.one .vlogo { margin-right: auto; } .viewer.one .where { order: 5; margin-right: 0; } }
 .zb { display: flex; gap: 8px; align-items: center; }
 .vsh svg { transition: transform .5s cubic-bezier(.2,.7,.2,1); } .vsh.spin svg { transform: rotate(180deg); }
 .zoom { position: fixed; inset: 0; z-index: 25; display: none; background: rgba(16,18,19,.66); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
@@ -186,6 +191,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
   <div class="vbg" id="vbg"></div>
   <div class="stage" id="stage"><div class="frame" id="frame"></div></div>
   <div class="vtop chrome">
+    <span class="vlogo"><img src="logo-white.svg" alt="Drambay Tiles &amp; Sanitary Ware"></span>
     <span class="where glass"><b id="vname" style="font-weight:400"></b><i id="vcount"></i></span>
     <button class="vbtn glass zb" id="zoomb" type="button" aria-label="See the tile close up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6M10.5 8v5M8 10.5h5"/></svg><span>Tile close-up</span></button>
     <button class="vbtn glass" id="tilt" type="button" aria-pressed="false" hidden>3D tilt</button>

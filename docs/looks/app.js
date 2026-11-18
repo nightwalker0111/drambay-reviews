@@ -421,6 +421,14 @@ function setSpace(k){
   setTimeout(() => { hall.setBays(bays); hcount(hall.active); }, STILL ? 0 : 330);
 }
 function placeHallNav(){ if (hall) $('hall').style.setProperty('--ringy', Math.round(hall.ringY()) + 'px'); }
+// the hall as the tool's front door (?walk=1 and ?pick=CODE): it is the first and last screen, with no choose-your-tiles page in between.
+// Its X leaves the tool: back to the page the visitor came from, else to the site's home, else (no site around it) to the choose-your-tiles page.
+function hallFront(){ hallHome = true; $('hall').classList.add('home', 'exit'); }
+function leave(){
+  let ref = ''; try { const r = new URL(document.referrer); if (r.origin === location.origin && r.pathname !== location.pathname) ref = r.href; } catch (e) {}
+  if (ref){ if (history.length > 1) history.back(); else location.href = ref; return; }
+  const a = document.querySelector('header.top a[href]'); location.href = a ? a.href : location.pathname;
+}
 function openHall(){
   if (hallOn) return;
   try { if (!hall) buildHall(); } catch (e) { toast('This device cannot draw the display hall.'); return; }
@@ -657,16 +665,20 @@ async function start(){
     hallHome = true; $('hall').classList.add('home'); openHall(); if (v) openViewer(v.c, true, v.sp); return;
   }
   const pv = PICK && pickRoom(PICK); if (pv){ save(); drawPicks(); }
+  if (pv || PICK || Q.has('walk')){      // from a button on the site: straight into the display hall (a design's own button: straight into a room, the hall behind it)
+    if (pv) hspace = pv.sp;
+    hallFront(); openHall();
+    if (pv) openViewer(pv.c, true, pv.sp); else if (PICK) toast('This tile is not in the display yet.');
+    return;
+  }
   await renderGrid();
   if (store.get('drb-offline')){ $('offline').textContent = 'Saved for offline'; $('offline').classList.add('done'); }
-  if (pv) openViewer(pv.c, false, pv.sp);
-  else if (PICK) toast('This tile is not in the display yet.');
-  else if (Q.get('open')) { const id = Q.get('open'), c = cards.find(c => c.id === id), sp = Object.keys(SPACES).find(k => SPACES[k].rooms.includes(id)); if (c) openViewer(c); else if (sp) openViewer(roomOf(id), false, sp); }
+  if (Q.get('open')) { const id = Q.get('open'), c = cards.find(c => c.id === id), sp = Object.keys(SPACES).find(k => SPACES[k].rooms.includes(id)); if (c) openViewer(c); else if (sp) openViewer(roomOf(id), false, sp); }
   else if (Q.has('walk')) openHall();
 }
 $('close').onclick = () => closeViewer();
 addEventListener('popstate', () => { if (skipPop){ skipPop = false; return; } if (zm){ closeZoom(true); return; } if (open) closeViewer(true); else closeHall(true); });
-$('walk').onclick = openHall; $('hclose').onclick = () => closeHall(); $('hprev').onclick = () => hall.turn(-1); $('hnext').onclick = () => hall.turn(1); $('hstep').onclick = () => hall.enter(hall.active); $('hshuffle').onclick = hallSurprise;
+$('walk').onclick = openHall; $('hclose').onclick = () => hallHome ? leave() : closeHall(); $('hprev').onclick = () => hall.turn(-1); $('hnext').onclick = () => hall.turn(1); $('hstep').onclick = () => hall.enter(hall.active); $('hshuffle').onclick = hallSurprise;
 $('hspace').onclick = () => { if (!oneList) spaceMenu($('hmenu').hidden); }; $('hallcv').addEventListener('pointerdown', () => spaceMenu(false));
 $('prev').onclick = () => go(-1); $('next').onclick = () => go(1);
 $('share').onclick = share; $('vshuffle').onclick = viewSurprise; $('zoomb').onclick = () => zoomLook(); $('offline').onclick = saveOffline; $('shuffle').onclick = surprise;

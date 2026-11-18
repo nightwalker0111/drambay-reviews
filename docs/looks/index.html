@@ -111,7 +111,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 .vlogo img { height: 26px; width: auto; display: block; }
 .viewer.one #vshuffle, .viewer.one #swap { display: none; }
 .viewer.one .picks .slot { grid-column: span 2; }
-.hall.home #hclose, .hall.one #hshuffle, .hall.one #hspace svg { display: none; } .hall.one #hspace { cursor: default; margin-right: auto; }
+.hall.home:not(.exit) #hclose, .hall.one #hshuffle, .hall.one #hspace svg { display: none; } .hall.one #hspace { cursor: default; margin-right: auto; }
 @media (max-width: 520px){ .viewer.one .vtop { flex-wrap: wrap; } .viewer.one .vlogo { margin-right: auto; } .viewer.one .where { order: 5; margin-right: 0; } }
 .zb { display: flex; gap: 8px; align-items: center; }
 .vsh svg { transition: transform .5s cubic-bezier(.2,.7,.2,1); } .vsh.spin svg { transform: rotate(180deg); }

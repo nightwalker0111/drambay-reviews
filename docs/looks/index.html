@@ -110,6 +110,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 .viewer.one .vlogo { display: flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; background: rgba(22,25,26,.78); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 .vlogo img { height: 26px; width: auto; display: block; }
 .viewer.one #vshuffle, .viewer.one #swap { display: none; }
+.viewer.one .picks .slot { grid-column: span 2; }
 .hall.home #hclose, .hall.one #hshuffle, .hall.one #hspace svg { display: none; } .hall.one #hspace { cursor: default; margin-right: auto; }
 @media (max-width: 520px){ .viewer.one .vtop { flex-wrap: wrap; } .viewer.one .vlogo { margin-right: auto; } .viewer.one .where { order: 5; margin-right: 0; } }
 .zb { display: flex; gap: 8px; align-items: center; }
@@ -202,7 +203,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
   <button class="nav next glass chrome" id="next" type="button" aria-label="Next room"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
   <div class="bar chrome">
     <section class="picks" id="vpicks" aria-label="Your tiles"></section>
-    <button class="round" id="swap" type="button" title="Swap the wall and the feature wall" aria-label="Swap the wall and the feature wall"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/></svg></button>
+    <button class="round" id="swap" type="button" title="Swap the wall and the highlighter wall" aria-label="Swap the wall and the highlighter wall"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/></svg></button>
     <div class="acts">
       <button class="act sm vsh" id="vshuffle" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h3.5c5 0 6 10 11 10H21"/><path d="M3 17h3.5c1.6 0 2.8-1 3.9-2.4M13.6 9.4C14.7 8 15.9 7 17.5 7H21"/><path d="M18 4l3 3-3 3M18 14l3 3-3 3"/></svg>Surprise me</button>
       <button class="act" id="share" type="button">Share picture</button>

@@ -23,7 +23,7 @@ let hallHome = false;                         // the display hall is the first a
 const KEY = DEALER ? '-' + DEALER : '';
 for (const e of document.querySelectorAll('img[data-asset]')) e.src = asset(e.dataset.asset);
 const $ = (id) => document.getElementById(id);
-const SLOTS = [['floor', 'Floor'], ['wall', 'Walls'], ['feature', 'Feature wall']];
+const SLOTS = [['floor', 'Floor'], ['wall', 'Walls'], ['feature', 'Highlighter wall']];
 const DEFAULTS = { floor: 'DRB-6012-053', wall: 'DRB-6012-003', feature: 'DRB-6012-012' };
 const FIN = { polished: 'Glossy', mirror: 'High Gloss', natural: 'Matt', textured: 'Textured' };
 const STILL = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -42,11 +42,18 @@ const sizeOf = (d) => d.size.join(' x ');
 const finCat = (d) => (d.finish === 'polished' || d.finish === 'mirror') ? 'Glossy' : 'Matt';
 const label = (d) => `${d.size[0]} x ${d.size[1]} mm, ${FIN[d.finish] || d.finishEn || ''}`.replace(/, $/, '');
 const MH_ok = (d) => LOCAL || !!MH[d.faces[0]];
-const fits = (d, slot) => !d.pair && d.faces && d.faces.length && MH_ok(d) && (d.app === 'A' || (slot === 'floor' && d.app === 'T')) && !(slot === 'floor' && decor(d));      // a decor tile is never a full floor
+const fits = (d, slot) => !d.pair && d.faces && d.faces.length && MH_ok(d) && (d.app === 'A' || (slot === 'floor' && d.app === 'T')) && !(slot !== 'feature' && decor(d));      // a decor tile is only ever the highlighter wall: never a full floor, never all the walls
 const decor = (d) => /decor|pattern/i.test(d.look || '') || /decor/i.test(d.name);
 // which floors belong where: living room = 600 x 1200 and 800 x 1600 only (never 600 x 600 matt); terrace and parking = the outdoor and 600 x 600 matt ranges. Decor tiles are never a full floor.
 const fitsIn = (sp, d, slot) => sp === 'bath' ? fits(d, slot)
   : !!(d.faces && d.faces.length && MH_ok(d) && !decor(d)) && (sp === 'living' ? d.app === 'A' && !d.pair && (sizeOf(d) === '600 x 1200' || sizeOf(d) === '800 x 1600') : (d.app === 'K' || d.app === 'T') && !d.half);
+// the plain tile that goes with a decor tile: its own series first (Alice Aqua Decor -> Alice Aqua), else the calmest light tile of the same size
+function plainFor(d){
+  const ok = (x) => x.site !== false && !decor(x) && fits(x, 'wall') && fits(x, 'floor') && sizeOf(x) === sizeOf(d);
+  const own = designs.find(x => ok(x) && x.name.toLowerCase() === d.name.replace(/\s*decor$/i, '').toLowerCase()); if (own) return own;
+  const t = TONE[d.code] || [70, 0, 0], sc = (x) => { const q = TONE[x.code]; return Math.hypot(q[1], q[2]) + Math.abs(q[0] - 82) * .3 + ((q[2] > 5) === (t[2] > 5) ? 0 : 8); };
+  return designs.filter(x => ok(x) && TONE[x.code]).sort((a, b) => sc(a) - sc(b))[0] || null;
+}
 const floorOnly = () => !!SPACES[vspace].floorOnly;
 // the tool's lists: read from assets.js when they are packed in there (drambay.com), else fetched as files
 const getJSON = (p) => DATA[p] ? Promise.resolve(DATA[p]) : fetch(p).then(r => { if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); });
@@ -79,7 +86,7 @@ function drawPicks(){
     host.innerHTML = '';
     if (oneList && host.id === 'vpicks'){ const d = oneD(), b = document.createElement('button'); b.className = 'slot'; b.type = 'button';
       b.innerHTML = `<i class="sw"></i><span><small></small><b></b></span>`; b.querySelector('.sw').style.backgroundImage = `url("${thumb(d.faces[0])}")`;
-      b.querySelector('small').textContent = `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm`; b.querySelector('b').textContent = d.name;
+      b.querySelector('small').textContent = `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm` + (decor(d) ? '  ·  highlighter wall' : ''); b.querySelector('b').textContent = d.name;
       b.setAttribute('aria-label', `${d.name}. See the tile close up`); b.onclick = () => zoomLook(); host.appendChild(b); continue; }
     const fo = host.id === 'vpicks' && floorOnly();              // living room, terrace, parking: one choice, the floor
     for (const [k, name] of (fo ? SLOTS.slice(0, 1) : SLOTS)){
@@ -278,7 +285,7 @@ async function picture(){
 }
 const words = () => { if (oneList){ const d = oneD(); return `${d.name} (${d.pair ? d.pair.join(' + ') : d.code})`; } if (floorOnly()){ const d = byCode(fstate[vspace]); return `Floor: ${d.name} (${d.pair ? d.pair.join(' + ') : d.code})`; } return SLOTS.map(([k, n]) => { const d = byCode(state[k]); return `${n}: ${d.name} (${d.code})`; }).join('\n'); };
 const what = () => floorOnly() && open ? open.name.toLowerCase() : 'bathroom';
-const oneD = () => byCode(floorOnly() ? fstate[vspace] : state.floor);
+let oneDesign = null; const oneD = () => oneDesign;
 async function share(){
   const b = $('share'); b.disabled = true;
   try {
@@ -327,6 +334,11 @@ function hallRows(sp){
   return rows.map(floorBay);
 }
 let bays = [];
+// a bay that shows a decor tile: the decor on the highlighter wall, its plain tile on the floor and the other walls; the label and the panel are the decor
+function decorBay(d, base){
+  const p = plainFor(d); if (!p) return null;
+  return Object.assign(bayOf([p.code, p.code, d.code, base]), { design: d, name: d.name, meta: `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm`, joint: jointOf(TONE[d.code]) });
+}
 // a dealer's display: his own designs take the twelve bays in turn (the list goes round again when he has fewer than twelve)
 function autoRows(sp, mixed){
   const T = (d) => TONE[d.code] || [70, 0, 0], sh = (a) => mixed ? a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(v => v[1]) : a;
@@ -368,7 +380,9 @@ function hallSurprise(){
     rows.push([d.code, floor, d.code, bases[rows.length % 3]]);
   }
   if (rows.length < 12) return;
-  bays = rows.map(bayOf); hall.spin(); setTimeout(() => { hall.setBays(bays); hcount(hall.active); }, STILL ? 0 : 330);
+  bays = rows.map(bayOf);
+  { const dec = designs.filter(d => decor(d) && fits(d, 'feature') && !now.has(d.code)), at = 2 + Math.floor(Math.random() * 9), b = dec.length && decorBay(dec[Math.floor(Math.random() * dec.length)], bays[at].base); if (b) bays[at] = b; }      // one bay in twelve shows a decor tile as a highlighter wall
+  hall.spin(); setTimeout(() => { hall.setBays(bays); hcount(hall.active); }, STILL ? 0 : 330);
   $('hshuffle').classList.toggle('spin');
 }
 function buildHall(){
@@ -426,6 +440,7 @@ const hiRes = (n) => face(n, 2800);
 // from a mockup: the tiles of this look. From the hall: the design of the bay in front.
 function zoomLook(){
   if (!open) return;
+  if (oneList) return openZoom([{ d: oneD(), label: 'Tile' }]);
   if (floorOnly()) return openZoom([{ d: byCode(fstate[vspace]), label: 'Floor' }]);
   const seen = [], items = [];
   for (const [k, name] of SLOTS){ const d = byCode(state[k]); const at = seen.indexOf(d.code); if (at < 0){ seen.push(d.code); items.push({ d, label: name }); } }
@@ -522,7 +537,7 @@ function surprise(){
   const A = designs.filter(d => fits(d, 'wall') && T(d)); if (A.length < 3) return;
   const walls = A.filter(d => T(d)[0] >= 72 && ch(T(d)) <= 12 && d.code !== state.wall);                  // walls: light and calm
   const wall = pick(walls.length ? walls : A), Lw = T(wall)[0];
-  const same = A.filter(d => d.code !== wall.code && sizeOf(d) === sizeOf(wall));
+  const same = designs.filter(d => fits(d, 'feature') && T(d) && d.code !== wall.code && sizeOf(d) === sizeOf(wall));      // decor tiles join here, and only here
   const feats = same.filter(d => (T(d)[0] <= 50 || ch(T(d)) >= 13 || Lw - T(d)[0] >= 22) && d.code !== state.feature);   // feature wall: dark or strong
   const feature = pick(feats.length ? feats : (same.length ? same : A));
   const F = designs.filter(d => fits(d, 'floor') && T(d) && d.code !== wall.code && d.code !== feature.code);
@@ -547,7 +562,7 @@ function drawChips(){
 const fitP = (d) => fitsIn(pickSpace, d, pickSlot) && !(d.terrace && open && open.id === 'p1');
 function openPicker(slot){
   pickSpace = open ? vspace : 'bath'; pickSlot = slot; sizeF = 'all'; finF = 'all'; $('q').value = '';
-  $('sheetTitle').textContent = { floor: 'Floor tile', wall: 'Wall tile', feature: 'Feature wall tile' }[slot];
+  $('sheetTitle').textContent = { floor: 'Floor tile', wall: 'Wall tile', feature: 'Highlighter wall tile' }[slot];
   drawChips(); drawList(); $('sheet').classList.add('on'); $('list').scrollTop = 0;
 }
 function drawList(){
@@ -598,15 +613,18 @@ async function startOne(){
   let d = designs.find(x => x.code.toUpperCase() === want);
   if (d && d.half) d = designs.find(x => x.pair && x.pair.includes(d.code) && x.size[0] === 500) || d;      // a 500 x 500 dark or light tile is always shown as its pair
   const L = [];
+  if (d && decor(d) && fits(d, 'feature')){      // a decor tile: highlighter wall only, with its plain tile on the rest
+    const p = plainFor(d); if (p){ state.floor = state.wall = p.code; state.feature = d.code; for (const c of cards) L.push({ ...c, sp: 'bath' }); }
+  }
   if (d && !decor(d)){
     if (!d.pair && fits(d, 'floor') && fits(d, 'wall')){ for (const [k] of SLOTS) state[k] = d.code; for (const c of cards) L.push({ ...c, sp: 'bath' }); }     // a bathroom only when the tile suits floor and walls: nothing else is shown beside it
     if (fitsIn('living', d)){ fstate.living = d.code; L.push({ ...roomOf('l1'), sp: 'living' }); }
     if (fitsIn('out', d)){ fstate.out = d.code; for (const id of SPACES.out.rooms) if (!(d.terrace && id === 'p1')) L.push({ ...roomOf(id), sp: 'out' }); }
   }
   if (!L.length){ document.querySelector('.wrap').innerHTML = '<header class="top"><img src="' + asset('d-logo.png') + '" alt="Drambay" width="36" height="34"></header><p class="note">This tile is not in the display yet.</p>'; return; }
-  oneList = L; hallHome = true; document.title = `${d.name} · Drambay`; $('viewer').classList.add('one'); $('hall').classList.add('one', 'home');
+  oneList = L; oneDesign = d; hallHome = true; document.title = `${d.name} · Drambay`; $('viewer').classList.add('one'); $('hall').classList.add('one', 'home');
   // the display comes first: the tile's face under the Drambay banner, one bay for each room it suits, then step into a room
-  bays = Array.from({ length: 12 }, (_, i) => { const c = L[i % L.length], b = c.sp === 'bath' ? bayOf([d.code, d.code, d.code, c.id]) : floorBay([d.code, c.id]); b.sp = c.sp; return b; });
+  bays = Array.from({ length: 12 }, (_, i) => { const c = L[i % L.length], b = c.sp !== 'bath' ? floorBay([d.code, c.id]) : decor(d) ? decorBay(d, c.id) : bayOf([d.code, d.code, d.code, c.id]); b.sp = c.sp; return b; });
   $('hsname').textContent = d.name; $('hstep').textContent = 'Step into this room'; $('hspace').removeAttribute('aria-haspopup');
   if (Q.get('open')){ const c = L.find(v => v.id === Q.get('open')); if (c){ await openViewer(c, false, c.sp); return; } }
   openHall(); hcount(0);
@@ -634,7 +652,7 @@ $('walk').onclick = openHall; $('hclose').onclick = () => closeHall(); $('hprev'
 $('hspace').onclick = () => { if (!oneList) spaceMenu($('hmenu').hidden); }; $('hallcv').addEventListener('pointerdown', () => spaceMenu(false));
 $('prev').onclick = () => go(-1); $('next').onclick = () => go(1);
 $('share').onclick = share; $('vshuffle').onclick = viewSurprise; $('zoomb').onclick = () => zoomLook(); $('offline').onclick = saveOffline; $('shuffle').onclick = surprise;
-$('swap').onclick = () => { [state.wall, state.feature] = [state.feature, state.wall]; changed(); };
+$('swap').onclick = () => { if (decor(byCode(state.feature))){ toast('A decor tile stays on the highlighter wall.'); return; } [state.wall, state.feature] = [state.feature, state.wall]; changed(); };
 $('sheetClose').onclick = () => $('sheet').classList.remove('on');
 $('sheet').onclick = (e) => { if (e.target === $('sheet')) $('sheet').classList.remove('on'); };
 $('q').oninput = drawList;

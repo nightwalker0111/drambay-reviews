@@ -1,7 +1,7 @@
 {
-  "name": "Drambay Bathroom Looks",
-  "short_name": "Drambay Looks",
-  "description": "Pick your tiles once and see them in every bathroom.",
+  "name": "Drambay Try Your Tiles",
+  "short_name": "Try Tiles",
+  "description": "Choose your tiles and see them laid in real bathrooms.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

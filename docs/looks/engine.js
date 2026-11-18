@@ -114,6 +114,7 @@ void main(){
 const FS_B = COMMON + `
 uniform sampler2D uA; uniform float uTopY; uniform float uLods;
 uniform vec4 uWater; uniform vec2 uWater2; uniform float uGrain;
+uniform sampler2D uDepth; uniform vec3 uPar;   // tilt: xy = shift, z = zoom margin (0 = off)
 vec3 srcA(vec2 uv, float lod){ return textureLod(uA, vec2(uv.x, 1.-uv.y), lod).rgb; }
 vec3 trace(vec3 Pw, vec3 Rd, int skip, float lod){
   float best = 1e9;
@@ -136,10 +137,13 @@ vec3 trace(vec3 Pw, vec3 Rd, int skip, float lod){
   return mix(far, srcA(clamp(sp, 0., 1.), lod), e.x*e.y);
 }
 void main(){
-  vec2 px = vUV*uRes;
-  vec3 col = srcA(vUV, 0.);
+  // 3D feel: the finished picture is shifted by depth (near things move more than far ones)
+  vec2 uvw = vUV;
+  if (uPar.z > 0.){ uvw = .5 + (vUV - .5)*(1. - 2.*uPar.z); uvw = clamp(uvw + uPar.xy*(texture(uDepth, uvw).r - .62), 0., 1.); }
+  vec2 px = uvw*uRes;
+  vec3 col = srcA(uvw, 0.);
   int id = planeId(px);
-  vec4 ob = objAt(vUV); vec4 mp = texture(uMaps, vUV);
+  vec4 ob = objAt(uvw); vec4 mp = texture(uMaps, uvw);
   if (id > 0 && id <= uNP){
     int k = id-1; int s = uPset[k];
     if (s >= 0 && uTfin[s].x > 0.){
@@ -180,7 +184,7 @@ void main(){
     col += vec3(.8,.85,.9) * exp(-md*md*2.) * (.035 + .012*sin(uTime*3.1 + px.x*.05)) * uWater.w;
   }
   vec3 outc = sRGB(clamp(col, 0., 1.));
-  outc += (h21(px + fract(uTime)*37.) - .5) * uGrain;
+  outc += (h21(gl_FragCoord.xy + fract(uTime)*37.) - .5) * uGrain;
   o = vec4(outc, 1.);
 }`;
 
@@ -260,8 +264,9 @@ export class Engine {
     const pr = (async () => {
       const j = await (await fetch(dir + 'room.json')).json();
       const [base, maps, light, obj] = await Promise.all(['base.jpg', 'maps.png', 'light.jpg', 'obj.webp'].map(f => loadBitmap(dir + f)));
-      const room = { j, dir, base: this._tex2d(base, true), maps: this._tex2d(maps, false), light: this._tex2d(light, true), obj: this._tex2d(obj, true) };
+      const room = { j, dir, base: this._tex2d(base, true), maps: this._tex2d(maps, false), light: this._tex2d(light, true), obj: this._tex2d(obj, true), depth: null };
       [base, maps, light, obj].forEach(b => b.close && b.close());
+      try { const d = await loadBitmap(dir + 'depth.jpg'); room.depth = this._tex2d(d, false); d.close && d.close(); } catch (e) {}   // optional: without it the room simply stays flat
       return room;
     })();
     this.rooms.set(dir, pr); return pr;
@@ -329,7 +334,7 @@ export class Engine {
     const cw = tw + j, rem = width % cw;
     return rem < tw/3 ? cw - (tw + rem)/2 : 0;
   }
-  /* sets: {floor, wall, feature} (loaded sets). opts: width (output px), time (s), live (bool), grain */
+  /* sets: {floor, wall, feature} (loaded sets). opts: width (output px), time (s), live (bool), grain, par [x, y] in -1..1 (tilt) */
   render(room, sets, opts = {}){
     const gl = this.gl, j = room.j;
     const scale = Math.min(1, (opts.width || j.W) / j.W);
@@ -382,6 +387,9 @@ export class Engine {
     const wt = live.water; gl.uniform4f(u.uWater, wt ? wt.head[0] : 0, wt ? wt.head[1] : 0, on && wt && opts.water !== false ? wt.r : 0, 1);
     gl.uniform2f(u.uWater2, wt ? wt.floor : 1, wt ? wt.spread : 0);
     gl.uniform1f(u.uGrain, opts.grain === undefined ? .012 : opts.grain);
+    const par = room.depth && opts.par ? opts.par : null;
+    gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, room.depth || room.maps); gl.uniform1i(u.uDepth, 8);
+    gl.uniform3f(u.uPar, par ? par[0]*.03 : 0, par ? par[1]*.018 : 0, par ? .012 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     return this.canvas;
   }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Try Your Tiles | Drambay Rooms Studio</title>
-<meta name="description" content="Choose your tiles and see them laid in real bathrooms.">
+<meta name="description" content="Choose your tiles and see them laid across a whole room.">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#F5F2EC">
 <link rel="manifest" href="manifest.webmanifest">
@@ -109,7 +109,8 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 .vlogo { display: none; }
 .viewer.one .vlogo { display: flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; background: rgba(22,25,26,.78); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 .vlogo img { height: 26px; width: auto; display: block; }
-.viewer.one #close, .viewer.one #vshuffle, .viewer.one #swap { display: none; }
+.viewer.one #vshuffle, .viewer.one #swap { display: none; }
+.hall.home #hclose, .hall.one #hshuffle, .hall.one #hspace svg { display: none; } .hall.one #hspace { cursor: default; margin-right: auto; }
 @media (max-width: 520px){ .viewer.one .vtop { flex-wrap: wrap; } .viewer.one .vlogo { margin-right: auto; } .viewer.one .where { order: 5; margin-right: 0; } }
 .zb { display: flex; gap: 8px; align-items: center; }
 .vsh svg { transition: transform .5s cubic-bezier(.2,.7,.2,1); } .vsh.spin svg { transform: rotate(180deg); }
@@ -174,7 +175,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 <body>
 <div class="wrap">
   <header class="top">
-    <img src="d-logo.png" alt="Drambay" width="36" height="34">
+    <img src="d-logo.png" alt="Drambay" width="36" height="34" crossorigin="anonymous">
     <h1>Try Your Tiles</h1>
     <button class="quiet" id="install" hidden>Install app</button>
     <button class="quiet" id="offline">Save for offline</button>
@@ -191,7 +192,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
   <div class="vbg" id="vbg"></div>
   <div class="stage" id="stage"><div class="frame" id="frame"></div></div>
   <div class="vtop chrome">
-    <span class="vlogo"><img src="logo-white.svg" alt="Drambay Tiles &amp; Sanitary Ware"></span>
+    <span class="vlogo"><img data-asset="logo-white.svg" alt="Drambay Tiles &amp; Sanitary Ware"></span>
     <span class="where glass"><b id="vname" style="font-weight:400"></b><i id="vcount"></i></span>
     <button class="vbtn glass zb" id="zoomb" type="button" aria-label="See the tile close up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6M10.5 8v5M8 10.5h5"/></svg><span>Tile close-up</span></button>
     <button class="vbtn glass" id="tilt" type="button" aria-pressed="false" hidden>3D tilt</button>

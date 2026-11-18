@@ -280,14 +280,15 @@ export class Engine {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return t;
   }
-  async loadRoom(dir){
+  /* at(path) -> url, when the pictures do not sit next to the page */
+  async loadRoom(dir, at = (p) => p){
     if (this.rooms.has(dir)) return this.rooms.get(dir);
     const pr = (async () => {
-      const j = await (await fetch(dir + 'room.json')).json();
-      const [base, maps, light, obj] = await Promise.all(['base.jpg', 'maps.png', 'light.jpg', 'obj.webp'].map(f => loadBitmap(dir + f)));
+      const j = await (await fetch(at(dir + 'room.json'))).json();
+      const [base, maps, light, obj] = await Promise.all(['base.jpg', 'maps.png', 'light.jpg', 'obj.webp'].map(f => loadBitmap(at(dir + f))));
       const room = { j, dir, base: this._tex2d(base, true), maps: this._tex2d(maps, false), light: this._tex2d(light, true), obj: this._tex2d(obj, true), depth: null };
       [base, maps, light, obj].forEach(b => b.close && b.close());
-      try { const d = await loadBitmap(dir + 'depth.jpg'); room.depth = this._tex2d(d, false); d.close && d.close(); } catch (e) {}   // optional: without it the room simply stays flat
+      try { const d = await loadBitmap(at(dir + 'depth.jpg')); room.depth = this._tex2d(d, false); d.close && d.close(); } catch (e) {}   // optional: without it the room simply stays flat
       return room;
     })();
     this.rooms.set(dir, pr); return pr;

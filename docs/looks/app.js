@@ -1,5 +1,6 @@
 import { Engine } from './engine.js';
 import { Hall, WIN } from './hall.js';
+import { asset } from './assets.js';      // where each picture lives: next to the page on the test link, Wix Media on drambay.com
 
 const ROOMS = ['r7', 'r3', 'r6'];
 /* the display hall's three spaces. Bathrooms choose floor, walls and feature wall; the other two are floors only */
@@ -16,6 +17,11 @@ const Q = new URLSearchParams(location.search);
 const LOCAL = Q.has('local');
 const ONE = Q.get('tile');                    // one-design link: only this tile, in every room it suits. No other designs, no picker, no contact button.
 let oneList = null;
+// dealer link (?dealer=slug): only the designs that dealer stocks, in the display hall, with the picker and Surprise me. The address itself is what gets counted.
+const DEALER = (Q.get('dealer') || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+let hallHome = false;                         // the display hall is the first and last screen (one-design link, dealer link)
+const KEY = DEALER ? '-' + DEALER : '';
+for (const e of document.querySelectorAll('img[data-asset]')) e.src = asset(e.dataset.asset);
 const $ = (id) => document.getElementById(id);
 const SLOTS = [['floor', 'Floor'], ['wall', 'Walls'], ['feature', 'Feature wall']];
 const DEFAULTS = { floor: 'DRB-6012-053', wall: 'DRB-6012-003', feature: 'DRB-6012-012' };
@@ -42,7 +48,7 @@ const decor = (d) => /decor|pattern/i.test(d.look || '') || /decor/i.test(d.name
 const fitsIn = (sp, d, slot) => sp === 'bath' ? fits(d, slot)
   : !!(d.faces && d.faces.length && MH_ok(d) && !decor(d)) && (sp === 'living' ? d.app === 'A' && !d.pair && (sizeOf(d) === '600 x 1200' || sizeOf(d) === '800 x 1600') : (d.app === 'K' || d.app === 'T') && !d.half);
 const floorOnly = () => !!SPACES[vspace].floorOnly;
-const RM = {}, roomOf = (id) => RM[id] || (RM[id] = { id, room: eng.loadRoom(`rooms/${id}/`) });
+const RM = {}, roomOf = (id) => RM[id] || (RM[id] = { id, room: eng.loadRoom(`rooms/${id}/`, asset) });
 function addPairs(){
   for (const [ca, cb] of PAIRS){
     const a = byCode(ca), b = byCode(cb); if (!a || !b || !MH_ok(a) || !MH_ok(b)) continue;
@@ -55,11 +61,15 @@ function addPairs(){
 
 function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 3200); }
 
-function save(){ if (oneList) return; store.set('drb-looks', JSON.stringify(state)); store.set('drb-floors', JSON.stringify(fstate)); }
+function save(){ if (oneList) return; store.set('drb-looks' + KEY, JSON.stringify(state)); store.set('drb-floors' + KEY, JSON.stringify(fstate)); }
+const firstFit = (k, def) => byCode(def) && fits(byCode(def), k) ? def : (designs.find(d => fits(d, k)) || {}).code;
+const firstIn = (sp, def) => byCode(def) && fitsIn(sp, byCode(def)) ? def : (designs.find(d => fitsIn(sp, d)) || {}).code;
+// a space is offered only when there is a tile to lay in it
+const spaceOK = (k) => SPACES[k].floorOnly ? !!fstate[k] : !!(state.floor && state.wall);
 function load(){
-  let s = {}, f = {}; try { s = JSON.parse(store.get('drb-looks') || '{}'); f = JSON.parse(store.get('drb-floors') || '{}'); } catch (e) {}
-  for (const [k] of SLOTS){ const c = Q.get(k) || s[k]; state[k] = byCode(c) && fits(byCode(c), k) ? c : DEFAULTS[k]; }
-  for (const k in SPACES) if (SPACES[k].floorOnly){ const c = f[k]; fstate[k] = byCode(c) && fitsIn(k, byCode(c)) ? c : SPACES[k].first; }
+  let s = {}, f = {}; try { s = JSON.parse(store.get('drb-looks' + KEY) || '{}'); f = JSON.parse(store.get('drb-floors' + KEY) || '{}'); } catch (e) {}
+  for (const [k] of SLOTS){ const c = Q.get(k) || s[k]; state[k] = byCode(c) && fits(byCode(c), k) ? c : firstFit(k, DEFAULTS[k]); }
+  for (const k in SPACES) if (SPACES[k].floorOnly){ const c = f[k]; fstate[k] = byCode(c) && fitsIn(k, byCode(c)) ? c : firstIn(k, SPACES[k].first); }
 }
 
 function drawPicks(){
@@ -71,7 +81,7 @@ function drawPicks(){
       b.setAttribute('aria-label', `${d.name}. See the tile close up`); b.onclick = () => zoomLook(); host.appendChild(b); continue; }
     const fo = host.id === 'vpicks' && floorOnly();              // living room, terrace, parking: one choice, the floor
     for (const [k, name] of (fo ? SLOTS.slice(0, 1) : SLOTS)){
-      const d = byCode(fo ? fstate[vspace] : state[k]); const b = document.createElement('button'); b.className = 'slot'; b.type = 'button';
+      const d = byCode(fo ? fstate[vspace] : state[k]); if (!d) continue; const b = document.createElement('button'); b.className = 'slot'; b.type = 'button';
       b.innerHTML = `<i class="sw"></i><span><small>${name}</small><b></b></span>`;
       b.querySelector('.sw').style.backgroundImage = `url("${thumb(d.faces[0])}")`; b.querySelector('b').textContent = d.name;
       b.setAttribute('aria-label', `${name}: ${d.name}. Change`);
@@ -113,7 +123,7 @@ function layoutGrid(force){
 async function buildGrid(){
   cards = ROOMS.map((id) => {
     const el = document.createElement('button'); el.className = 'card'; el.type = 'button';
-    el.innerHTML = `<span class="ph"><canvas width="16" height="9"></canvas><img alt="" src="rooms/${id}/thumb.jpg"></span><span class="nm"></span>`;
+    el.innerHTML = `<span class="ph"><canvas width="16" height="9"></canvas><img alt="" src="${asset(`rooms/${id}/thumb.jpg`)}"></span><span class="nm"></span>`;
     const c = { id, el, cv: el.querySelector('canvas'), room: roomOf(id).room };
     c.room.then(r => { c.ar = r.j.H / r.j.W; c.cv.width = r.j.W / 4; c.cv.height = r.j.H / 4; el.querySelector('.nm').textContent = r.j.name; el.setAttribute('aria-label', `${r.j.name}. Open full screen`); });
     el.onclick = () => openViewer(c);
@@ -129,10 +139,11 @@ const liveOf = (room) => !STILL && !!room.j.live && Object.keys(room.j.live).len
 
 function placeFrame(){ const f = $('frame'); f.style.transform = `translate(calc(-50% + ${fx.dx}px), calc(-50% + ${open ? open.oy : 0}px))`; f.style.opacity = fx.op; }
 function setFrame(dx, op){ fx.dx = dx; fx.op = op; placeFrame(); }
-// fill the screen, but never crop away more than about a fifth of the room
+// a screen held sideways (iPad, laptop): the room always covers the whole screen, no space left or right.
+// An upright phone: fill as far as possible without cropping away more than two fifths of a wide room.
 function fitOf(room){
   const st = $('stage'), a = st.clientWidth / room.j.W, b = st.clientHeight / room.j.H;
-  return Math.min(Math.max(a, b), Math.min(a, b) / .78);
+  return st.clientWidth >= st.clientHeight ? Math.max(a, b) : Math.min(Math.max(a, b), Math.min(a, b) / .6);
 }
 async function drawViewer(t, sharp){
   if (!open) return; const me = open;
@@ -176,7 +187,7 @@ async function show(i){
   if (oneList && c.sp !== vspace){ vspace = c.sp; $('viewer').classList.toggle('fo', floorOnly()); drawPicks(); }
   open = { ...c, i: L.indexOf(c), live: liveOf(room), oy: 0, t: 0, name: room.j.name };
   $('vname').textContent = room.j.name; navs();
-  $('vbg').style.backgroundImage = `url("rooms/${c.id}/thumb.jpg")`;
+  $('vbg').style.backgroundImage = `url("${asset(`rooms/${c.id}/thumb.jpg`)}")`;
   await drawViewer(0);
 }
 async function openViewer(c, soft, sp = 'bath'){
@@ -189,7 +200,7 @@ async function openViewer(c, soft, sp = 'bath'){
   if (!store.get('drb-hint') && vlist().length > 1){ store.set('drb-hint', '1'); toast(`Swipe for the next ${floorOnly() ? 'room' : 'bathroom'}. Tap the picture to hide the buttons.`); }
 }
 function closeViewer(pop){
-  if (!open || oneList) return; open = null; cancelAnimationFrame(raf); going = false; drag = null;
+  if (!open) return; open = null; cancelAnimationFrame(raf); going = false; drag = null;
   $('viewer').classList.remove('on'); document.body.style.overflow = '';
   if (!pop && history.state && history.state.v){ skipPop = true; history.back(); }
   if (hallOn) hall.resume(); else renderGrid();
@@ -307,15 +318,28 @@ const bayOf = ([w, f, x, base]) => { const d = byCode(w); return { design: d, na
 const floorBay = ([f, base]) => { const d = byCode(f); return { design: d, name: d.name, meta: `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm`, joint: jointOf(TONE[d.code]), combo: { floor: f }, base, focusY: .5 }; };
 // the twelve bays of a space (a design that cannot be shown is replaced by the next one that can, so the ring always has twelve)
 function hallRows(sp){
+  if (DEALER) return autoRows(sp);
   if (sp === 'bath') return BAYS.filter(r => r.slice(0, 3).every(c => byCode(c) && MH_ok(byCode(c)))).map(bayOf);
   const ok = FLOORS[sp].filter(r => byCode(r[0]) && fitsIn(sp, byCode(r[0]))), rows = [];
   for (let i = 0; ok.length && rows.length < 12; i++) rows.push(ok[i % ok.length]);
   return rows.map(floorBay);
 }
 let bays = [];
+// a dealer's display: his own designs take the twelve bays in turn (the list goes round again when he has fewer than twelve)
+function autoRows(sp, mixed){
+  const T = (d) => TONE[d.code] || [70, 0, 0], sh = (a) => mixed ? a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(v => v[1]) : a;
+  if (sp === 'bath'){
+    const pool = sh(designs.filter(d => fits(d, 'wall') && fits(d, 'floor'))), calm = pool.filter(d => T(d)[0] >= 78), bases = ['r3', 'r7', 'r6']; if (!pool.length) return [];
+    return Array.from({ length: 12 }, (_, i) => { const d = pool[i % pool.length]; return bayOf([d.code, T(d)[0] < 60 && calm.length ? calm[i % calm.length].code : d.code, d.code, bases[i % 3]]); });
+  }
+  const pool = sh(designs.filter(d => fitsIn(sp, d))), bases = SPACES[sp].rooms; if (!pool.length) return [];
+  return Array.from({ length: 12 }, (_, i) => { const d = pool[i % pool.length]; return floorBay([d.code, d.terrace ? 't1' : bases[i % bases.length]]); });
+}
+const hcount = (i) => { const n = oneList ? oneList.length : bays.length; $('hcount').textContent = oneList && n < 2 ? '' : `${i % n + 1} / ${n}`; };
 /* surprise me, in the hall: twelve other designs take the bays. Light and dark alternate; a dark design gets a calm light floor */
 function hallSurprise(){
   if (!hall || hall.anim) return;
+  if (DEALER){ bays = autoRows(hspace, true); hall.spin(); setTimeout(() => { hall.setBays(bays); hcount(hall.active); }, STILL ? 0 : 330); $('hshuffle').classList.toggle('spin'); return; }
   const T = (d) => TONE[d.code], ch = (t) => Math.hypot(t[1], t[2]), mix = (a) => a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(v => v[1]);
   const now = new Set(bays.map(b => b.design.code));
   if (hspace !== 'bath'){
@@ -328,7 +352,7 @@ function hallSurprise(){
       rows.push([src.splice(k, 1)[0].code, base]);
     }
     if (rows.length < 12) return;
-    bays = rows.map(floorBay); hall.spin(); setTimeout(() => { hall.setBays(bays); $('hcount').textContent = `${hall.active + 1} / ${bays.length}`; }, STILL ? 0 : 330);
+    bays = rows.map(floorBay); hall.spin(); setTimeout(() => { hall.setBays(bays); hcount(hall.active); }, STILL ? 0 : 330);
     $('hshuffle').classList.toggle('spin'); return;
   }
   const pool = designs.filter(d => fits(d, 'wall') && T(d) && d.size[0] === 600 && d.size[1] === 1200 && !/decor/i.test(d.look || '') && !/decor/i.test(d.name));
@@ -342,14 +366,13 @@ function hallSurprise(){
     rows.push([d.code, floor, d.code, bases[rows.length % 3]]);
   }
   if (rows.length < 12) return;
-  bays = rows.map(bayOf); hall.spin(); setTimeout(() => { hall.setBays(bays); $('hcount').textContent = `${hall.active + 1} / ${bays.length}`; }, STILL ? 0 : 330);
+  bays = rows.map(bayOf); hall.spin(); setTimeout(() => { hall.setBays(bays); hcount(hall.active); }, STILL ? 0 : 330);
   $('hshuffle').classList.toggle('spin');
 }
 function buildHall(){
-  if (SPACES[Q.get('space')]) hspace = Q.get('space');
-  bays = hallRows(hspace); drawSpaces();
+  if (!oneList){ if (SPACES[Q.get('space')]) hspace = Q.get('space'); if (!spaceOK(hspace)) hspace = Object.keys(SPACES).find(spaceOK) || hspace; bays = hallRows(hspace); drawSpaces(); }
   hall = new Hall($('hallcv'), {
-    bays, still: STILL, faceUrl: (n) => face(n, 640), logo: 'logo-white.svg', onZoom: (i) => { const d = bays[i] && bays[i].design; if (d) openZoom([{ d, label: 'Tile' }]); },
+    bays, still: STILL, faceUrl: (n) => face(n, 640), logo: asset('logo-white.svg'), onZoom: (i) => { const d = bays[i] && bays[i].design; if (d) openZoom([{ d, label: 'Tile' }]); },
     paint: async (b, put, w) => {
       const room = await roomOf(b.base).room; let S;
       for (;;){ S = {}; for (const k of ['floor', 'wall', 'feature']) S[k] = b.combo[k] ? await eng.loadSet(byCode(b.combo[k]), full) : S.floor; if (!open) break; await wait(200); }
@@ -357,9 +380,10 @@ function buildHall(){
       put(cv, cv.width, cv.height);
     },
     onMove: (on) => $('hall').classList.toggle('going', on),
-    onBay: (i) => { $('hcount').textContent = `${i + 1} / ${bays.length}`; },
+    onBay: (i) => hcount(i),
     onEnter: (i) => {
       const b = bays[i];
+      if (oneList){ openViewer(oneList[i % oneList.length], true, b.sp); return; }      // one-design link: every bay is this tile in one of its rooms
       if (b.combo.wall){ Object.assign(state, b.combo); save(); openViewer(cards.find(c => c.id === b.base), true); }
       else { fstate[hspace] = b.combo.floor; save(); openViewer(roomOf(b.base), true, hspace); }
     },
@@ -370,26 +394,26 @@ function buildHall(){
 function drawSpaces(){
   $('hsname').textContent = SPACES[hspace].name; $('hstep').textContent = hspace === 'bath' ? 'Step into this bathroom' : 'Step into this room';
   const m = $('hmenu'); m.innerHTML = '';
-  for (const k in SPACES){ const b = document.createElement('button'); b.type = 'button'; b.textContent = SPACES[k].name; b.setAttribute('role', 'menuitem'); if (k === hspace) b.setAttribute('aria-current', 'true'); b.onclick = () => { spaceMenu(false); setSpace(k); }; m.appendChild(b); }
+  for (const k in SPACES){ if (!spaceOK(k)) continue; const b = document.createElement('button'); b.type = 'button'; b.textContent = SPACES[k].name; b.setAttribute('role', 'menuitem'); if (k === hspace) b.setAttribute('aria-current', 'true'); b.onclick = () => { spaceMenu(false); setSpace(k); }; m.appendChild(b); }
 }
 function spaceMenu(on){ clearTimeout(spaceMenu.t); $('hmenu').hidden = !on; $('hspace').setAttribute('aria-expanded', on); }
 function setSpace(k){
   if (!hall || hall.anim || k === hspace || !SPACES[k]) return;
   const rows = hallRows(k); if (rows.length < 12) { toast('These floors are not saved on this device yet. Connect once to load them.'); return; }
   hspace = k; bays = rows; drawSpaces(); hall.spin();
-  setTimeout(() => { hall.setBays(bays); $('hcount').textContent = `${hall.active + 1} / ${bays.length}`; }, STILL ? 0 : 330);
+  setTimeout(() => { hall.setBays(bays); hcount(hall.active); }, STILL ? 0 : 330);
 }
 function placeHallNav(){ if (hall) $('hall').style.setProperty('--ringy', Math.round(hall.ringY()) + 'px'); }
 function openHall(){
   if (hallOn) return;
   try { if (!hall) buildHall(); } catch (e) { toast('This device cannot draw the display hall.'); return; }
-  hallOn = true; $('hall').classList.add('on'); document.body.style.overflow = 'hidden'; history.pushState({ h: 1 }, '');
+  hallOn = true; $('hall').classList.add('on'); document.body.style.overflow = 'hidden'; if (!hallHome) history.pushState({ h: 1 }, '');
   $('hall').classList.remove('going'); hall.open(); placeHallNav();
   if (!store.get('drb-hallhint')){ store.set('drb-hallhint', '1'); toast('Drag to look around. Tap the circle on the floor to step inside.'); }
-  if (!store.get('drb-spacehint')){ store.set('drb-spacehint', '1'); spaceMenu(true); spaceMenu.t = setTimeout(() => spaceMenu(false), 4200); }      // shown once: the list of spaces
+  if (!oneList && !store.get('drb-spacehint')){ store.set('drb-spacehint', '1'); spaceMenu(true); spaceMenu.t = setTimeout(() => spaceMenu(false), 4200); }      // shown once: the list of spaces
 }
 function closeHall(pop){
-  if (!hallOn) return; hallOn = false; spaceMenu(false); hall.close(); $('hall').classList.remove('on'); document.body.style.overflow = '';
+  if (!hallOn || hallHome) return; hallOn = false; spaceMenu(false); hall.close(); $('hall').classList.remove('on'); document.body.style.overflow = '';
   if (!pop && history.state && history.state.h){ skipPop = true; history.back(); }
   renderGrid();
 }
@@ -577,16 +601,26 @@ async function startOne(){
     if (fitsIn('living', d)){ fstate.living = d.code; L.push({ ...roomOf('l1'), sp: 'living' }); }
     if (fitsIn('out', d)){ fstate.out = d.code; for (const id of SPACES.out.rooms) if (!(d.terrace && id === 'p1')) L.push({ ...roomOf(id), sp: 'out' }); }
   }
-  if (!L.length){ document.querySelector('.wrap').innerHTML = '<header class="top"><img src="d-logo.png" alt="Drambay" width="36" height="34"></header><p class="note">This tile is not in the display yet.</p>'; return; }
-  oneList = L; document.title = `${d.name} · Drambay`; $('viewer').classList.add('one');
-  await openViewer(L[0], false, L[0].sp);
+  if (!L.length){ document.querySelector('.wrap').innerHTML = '<header class="top"><img src="' + asset('d-logo.png') + '" alt="Drambay" width="36" height="34"></header><p class="note">This tile is not in the display yet.</p>'; return; }
+  oneList = L; hallHome = true; document.title = `${d.name} · Drambay`; $('viewer').classList.add('one'); $('hall').classList.add('one', 'home');
+  // the display comes first: the tile's face under the Drambay banner, one bay for each room it suits, then step into a room
+  bays = Array.from({ length: 12 }, (_, i) => { const c = L[i % L.length], b = c.sp === 'bath' ? bayOf([d.code, d.code, d.code, c.id]) : floorBay([d.code, c.id]); b.sp = c.sp; return b; });
+  $('hsname').textContent = d.name; $('hstep').textContent = 'Step into this room'; $('hspace').removeAttribute('aria-haspopup');
+  if (Q.get('open')){ const c = L.find(v => v.id === Q.get('open')); if (c){ await openViewer(c, false, c.sp); return; } }
+  openHall(); hcount(0);
 }
 async function start(){
   [designs, MH, TONE] = await Promise.all([fetch('designs.json').then(r => r.json()), fetch('mh.json').then(r => r.json()), fetch('tones.json').then(r => r.json()).catch(() => ({}))]);
   try { eng = new Engine(); } catch (e) { $('grid').innerHTML = '<p class="note">This device cannot draw the live rooms. Please open it in a current browser.</p>'; return; }
-  if (!ONE) designs = designs.filter(d => d.site !== false);      // designs that are not on drambay.com (dealer-only, or taken off the site) are never offered here; a one-design link can still open one
+  designs = designs.filter(d => d.site !== false || (d.dealers || []).length);      // taken off the site and stocked by no dealer: shown nowhere, not even by a direct link
+  if (DEALER && !ONE) designs = designs.filter(d => (d.dealers || []).includes(DEALER));      // a dealer's link: his designs only
+  else if (!ONE) designs = designs.filter(d => d.site !== false);      // designs that are not on drambay.com (dealer-only, or taken off the site) are never offered here; a one-design link can still open one
   addPairs(); load(); drawPicks(); await buildGrid();
   if (ONE){ await startOne(); return; }
+  if (DEALER){      // the display hall is this link's home: no Drambay catalogue behind it
+    if (!Object.keys(SPACES).some(spaceOK)){ document.querySelector('.wrap').innerHTML = '<header class="top"><img src="' + asset('d-logo.png') + '" alt="Drambay" width="36" height="34"></header><p class="note">This display is not set up yet.</p>'; return; }
+    hallHome = true; $('hall').classList.add('home'); openHall(); return;
+  }
   await renderGrid();
   if (store.get('drb-offline')){ $('offline').textContent = 'Saved for offline'; $('offline').classList.add('done'); }
   if (Q.get('open')) { const id = Q.get('open'), c = cards.find(c => c.id === id), sp = Object.keys(SPACES).find(k => SPACES[k].rooms.includes(id)); if (c) openViewer(c); else if (sp) openViewer(roomOf(id), false, sp); }
@@ -595,7 +629,7 @@ async function start(){
 $('close').onclick = () => closeViewer();
 addEventListener('popstate', () => { if (skipPop){ skipPop = false; return; } if (zm){ closeZoom(true); return; } if (open) closeViewer(true); else closeHall(true); });
 $('walk').onclick = openHall; $('hclose').onclick = () => closeHall(); $('hprev').onclick = () => hall.turn(-1); $('hnext').onclick = () => hall.turn(1); $('hstep').onclick = () => hall.enter(hall.active); $('hshuffle').onclick = hallSurprise;
-$('hspace').onclick = () => spaceMenu($('hmenu').hidden); $('hallcv').addEventListener('pointerdown', () => spaceMenu(false));
+$('hspace').onclick = () => { if (!oneList) spaceMenu($('hmenu').hidden); }; $('hallcv').addEventListener('pointerdown', () => spaceMenu(false));
 $('prev').onclick = () => go(-1); $('next').onclick = () => go(1);
 $('share').onclick = share; $('vshuffle').onclick = viewSurprise; $('zoomb').onclick = () => zoomLook(); $('offline').onclick = saveOffline; $('shuffle').onclick = surprise;
 $('swap').onclick = () => { [state.wall, state.feature] = [state.feature, state.wall]; changed(); };

@@ -85,7 +85,7 @@ export class Hall {
     this.vao = gl.createVertexArray(); gl.bindVertexArray(this.vao); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     this.aniso = gl.getExtension('EXT_texture_filter_anisotropic');
     this.yaw = 0; this.target = 0; this.vel = 0; this.cam = [0, 0, 0]; this.hz = .54; this.k = 0; this.on = false; this.paused = false; this.anim = null; this.drag = null; this.queue = Promise.resolve(); this.t0 = performance.now();
-    this.board = null; if (opts.logo){ const im = new Image(); im.onload = () => { this.logo = im; this._board(); this.need = true; }; im.src = opts.logo; }
+    this.board = null; if (opts.logo){ const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { this.logo = im; this._board(); this.need = true; }; im.src = opts.logo; }
     this._events(); this.size();
   }
   get active(){ return ((Math.round(this.yaw / SEG) % N) + N) % N; }

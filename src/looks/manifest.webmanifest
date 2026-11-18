@@ -1,7 +1,7 @@
 {
   "name": "Drambay Try Your Tiles",
   "short_name": "Try Tiles",
-  "description": "Choose your tiles and see them laid in real bathrooms.",
+  "description": "Choose your tiles and see them laid across a whole room.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

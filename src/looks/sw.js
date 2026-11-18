@@ -1,5 +1,5 @@
 /* Try Your Tiles (bathrooms): works with no network once opened (shell + rooms), tile faces after "Save for offline". */
-const SHELL = 'drb-shell-v2', FACES = 'drb-faces-v1', FONTS = 'drb-fonts-v1';
+const SHELL = 'drb-shell-v3', FACES = 'drb-faces-v1', FONTS = 'drb-fonts-v1';
 const ROOMS = ['r7', 'r3', 'r6'];
 const FILES = ['./', 'index.html', 'app.js', 'engine.js', 'designs.json', 'mh.json', 'tones.json', 'manifest.webmanifest', 'd-logo.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   ...ROOMS.flatMap(r => ['room.json', 'base.jpg', 'light.jpg', 'maps.png', 'obj.webp', 'thumb.jpg', 'depth.jpg'].map(f => `rooms/${r}/${f}`))];

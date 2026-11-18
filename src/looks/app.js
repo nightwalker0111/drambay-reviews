@@ -1,6 +1,6 @@
 import { Engine } from './engine.js';
 import { Hall, WIN } from './hall.js';
-import { asset } from './assets.js';      // where each picture lives: next to the page on the test link, Wix Media on drambay.com
+import { asset, DATA } from './assets.js';      // where each picture lives: next to the page on the test link, Wix Media on drambay.com
 
 const ROOMS = ['r7', 'r3', 'r6'];
 /* the display hall's three spaces. Bathrooms choose floor, walls and feature wall; the other two are floors only */
@@ -48,7 +48,9 @@ const decor = (d) => /decor|pattern/i.test(d.look || '') || /decor/i.test(d.name
 const fitsIn = (sp, d, slot) => sp === 'bath' ? fits(d, slot)
   : !!(d.faces && d.faces.length && MH_ok(d) && !decor(d)) && (sp === 'living' ? d.app === 'A' && !d.pair && (sizeOf(d) === '600 x 1200' || sizeOf(d) === '800 x 1600') : (d.app === 'K' || d.app === 'T') && !d.half);
 const floorOnly = () => !!SPACES[vspace].floorOnly;
-const RM = {}, roomOf = (id) => RM[id] || (RM[id] = { id, room: eng.loadRoom(`rooms/${id}/`, asset) });
+// the tool's lists: read from assets.js when they are packed in there (drambay.com), else fetched as files
+const getJSON = (p) => DATA[p] ? Promise.resolve(DATA[p]) : fetch(p).then(r => { if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); });
+const RM = {}, roomOf = (id) => RM[id] || (RM[id] = { id, room: eng.loadRoom(`rooms/${id}/`, asset, getJSON) });
 function addPairs(){
   for (const [ca, cb] of PAIRS){
     const a = byCode(ca), b = byCode(cb); if (!a || !b || !MH_ok(a) || !MH_ok(b)) continue;
@@ -610,7 +612,7 @@ async function startOne(){
   openHall(); hcount(0);
 }
 async function start(){
-  [designs, MH, TONE] = await Promise.all([fetch('designs.json').then(r => r.json()), fetch('mh.json').then(r => r.json()), fetch('tones.json').then(r => r.json()).catch(() => ({}))]);
+  [designs, MH, TONE] = await Promise.all([getJSON('designs.json'), getJSON('mh.json'), getJSON('tones.json').catch(() => ({}))]);
   try { eng = new Engine(); } catch (e) { $('grid').innerHTML = '<p class="note">This device cannot draw the live rooms. Please open it in a current browser.</p>'; return; }
   designs = designs.filter(d => d.site !== false || (d.dealers || []).length);      // taken off the site and stocked by no dealer: shown nowhere, not even by a direct link
   if (DEALER && !ONE) designs = designs.filter(d => (d.dealers || []).includes(DEALER));      // a dealer's link: his designs only

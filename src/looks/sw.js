@@ -1,10 +1,21 @@
 /* Try Your Tiles (bathrooms, and the hall's living room, terrace and driveway): works with no network once opened (shell + rooms), tile faces after "Save for offline". */
-const SHELL = 'drb-shell-v9', FACES = 'drb-faces-v1', FONTS = 'drb-fonts-v1';
+const SHELL = 'drb-shell-v10', FACES = 'drb-faces-v1', FONTS = 'drb-fonts-v1';
 const ROOMS = ['r7', 'r3', 'r6', 'l1', 't1', 'p1'];
 const FILES = ['./', 'index.html', 'app.js', 'engine.js', 'hall.js', 'assets.js', 'designs.json', 'mh.json', 'tones.json', 'manifest.webmanifest', 'd-logo.png', 'logo-white.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png',
   ...ROOMS.flatMap(r => ['room.json', 'base.jpg', 'light.jpg', 'maps.png', 'obj.webp', 'thumb.jpg', 'depth.jpg'].map(f => `rooms/${r}/${f}`))];
 
-self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting())); });
+// One file at a time, never a burst: the drambay.com host refuses requests when too many arrive together.
+// The tool's own files must all arrive (three tries each); a picture that fails is picked up later, the first time it is shown.
+const pause = (ms) => new Promise(r => setTimeout(r, ms));
+async function keep(c, f){
+  const far = /^https:/.test(f);
+  for (let i = 0; i < 3; i++){
+    try { const r = await fetch(new Request(f, far ? {} : { cache: 'reload' })); if (r.ok){ await c.put(f, r); return; } } catch (e) {}
+    await pause(1500 * (i + 1));
+  }
+  if (!far) throw new Error('could not save ' + f);
+}
+self.addEventListener('install', (e) => { e.waitUntil(caches.open(SHELL).then(async c => { for (const f of FILES) await keep(c, f); }).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('drb-shell-') && k !== SHELL).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });

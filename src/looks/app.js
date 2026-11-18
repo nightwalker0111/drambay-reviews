@@ -21,6 +21,7 @@ let oneList = null;
 const DEALER = (Q.get('dealer') || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
 let hallHome = false;                         // the display hall is the first and last screen (one-design link, dealer link)
 const KEY = DEALER ? '-' + DEALER : '';
+const PICK = Q.get('pick');                  // a link from a design's own page: the full tool opens in a room with that tile already laid
 for (const e of document.querySelectorAll('img[data-asset]')) e.src = asset(e.dataset.asset);
 const $ = (id) => document.getElementById(id);
 const SLOTS = [['floor', 'Floor'], ['wall', 'Walls'], ['feature', 'Highlighter wall']];
@@ -629,6 +630,19 @@ async function startOne(){
   if (Q.get('open')){ const c = L.find(v => v.id === Q.get('open')); if (c){ await openViewer(c, false, c.sp); return; } }
   openHall(); hcount(0);
 }
+// ?pick=CODE: lay that tile and say which room to open. The same order as the one-design link: a bathroom when it suits floor and walls
+// (a decor tile on the highlighter wall with its plain tile), else the living room floor, else the terrace. Null when the tool has no room for it.
+function pickRoom(code){
+  const want = code.trim().toUpperCase().replace(/\s+/g, '+');
+  let d = designs.find(x => x.code.toUpperCase() === want);
+  if (d && d.half) d = designs.find(x => x.pair && x.pair.includes(d.code) && x.size[0] === 500) || d;
+  if (!d) return null;
+  if (decor(d)){ const p = fits(d, 'feature') && plainFor(d); if (!p) return null; state.floor = state.wall = p.code; state.feature = d.code; return { c: cards[0], sp: 'bath' }; }
+  if (!d.pair && fits(d, 'floor') && fits(d, 'wall')){ for (const [k] of SLOTS) state[k] = d.code; return { c: cards[0], sp: 'bath' }; }
+  if (fitsIn('living', d)){ fstate.living = d.code; return { c: roomOf('l1'), sp: 'living' }; }
+  if (fitsIn('out', d)){ fstate.out = d.code; return { c: roomOf(d.terrace ? 't1' : SPACES.out.rooms[0]), sp: 'out' }; }
+  return null;
+}
 async function start(){
   [designs, MH, TONE] = await Promise.all([getJSON('designs.json'), getJSON('mh.json'), getJSON('tones.json').catch(() => ({}))]);
   try { eng = new Engine(); } catch (e) { $('grid').innerHTML = '<p class="note">This device cannot draw the live rooms. Please open it in a current browser.</p>'; return; }
@@ -639,11 +653,15 @@ async function start(){
   if (ONE){ await startOne(); return; }
   if (DEALER){      // the display hall is this link's home: no Drambay catalogue behind it
     if (!Object.keys(SPACES).some(spaceOK)){ document.querySelector('.wrap').innerHTML = '<header class="top"><img src="' + asset('d-logo.png') + '" alt="Drambay" width="36" height="34"></header><p class="note">This display is not set up yet.</p>'; return; }
-    hallHome = true; $('hall').classList.add('home'); openHall(); return;
+    const v = PICK && pickRoom(PICK); if (v){ save(); drawPicks(); }
+    hallHome = true; $('hall').classList.add('home'); openHall(); if (v) openViewer(v.c, true, v.sp); return;
   }
+  const pv = PICK && pickRoom(PICK); if (pv){ save(); drawPicks(); }
   await renderGrid();
   if (store.get('drb-offline')){ $('offline').textContent = 'Saved for offline'; $('offline').classList.add('done'); }
-  if (Q.get('open')) { const id = Q.get('open'), c = cards.find(c => c.id === id), sp = Object.keys(SPACES).find(k => SPACES[k].rooms.includes(id)); if (c) openViewer(c); else if (sp) openViewer(roomOf(id), false, sp); }
+  if (pv) openViewer(pv.c, false, pv.sp);
+  else if (PICK) toast('This tile is not in the display yet.');
+  else if (Q.get('open')) { const id = Q.get('open'), c = cards.find(c => c.id === id), sp = Object.keys(SPACES).find(k => SPACES[k].rooms.includes(id)); if (c) openViewer(c); else if (sp) openViewer(roomOf(id), false, sp); }
   else if (Q.has('walk')) openHall();
 }
 $('close').onclick = () => closeViewer();
@@ -673,4 +691,5 @@ window.__looks.hall = () => hall;
 // test hooks: one frame of a room as a JPEG data URL, and the tilt position
 window.__looks.frame = async (id, t, w, live = true, p = null) => { const c = cards.find(c => c.id === id); return eng.render(await c.room, await sets(), { width: w, live, time: t, par: p }).toDataURL('image/jpeg', .9); };
 window.__looks.space = (k) => setSpace(k);
+window.__looks.can = (code) => { const keep = [{ ...state }, { ...fstate }], v = !!pickRoom(code); Object.assign(state, keep[0]); Object.assign(fstate, keep[1]); return v; };      // test hook: has the tool a room for this design?
 window.__looks.par = (x, y) => { mouse.v = [x, y]; mouse.at = performance.now() + 1e9; };

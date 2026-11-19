@@ -35,7 +35,7 @@ const clamp = (v, a = -1, b = 1) => Math.max(a, Math.min(b, v));
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
 
-let designs = [], MH = {}, TONE = {}, eng, cards = [], state = {}, fstate = {}, kstate = {}, vspace = 'bath', hspace = 'bath', pickSpace = 'bath', open = null, pickSlot = null, sizeF = 'all', finF = 'all', dirty = false, raf = 0, token = 0;
+let designs = [], MH = {}, TONE = {}, eng, cards = [], state = {}, fstate = {}, kstate = {}, vspace = 'bath', hspace = 'bath', pickSpace = 'bath', open = null, pickSlot = null, sizeF = 'all', finF = 'all', pairF = 'all', dirty = false, raf = 0, token = 0;
 
 const face = (n, w) => LOCAL ? `tiles/${n}.jpg`
   : `https://static.wixstatic.com/media/da1752_${MH[n]}~mv2.jpg/v1/fit/w_${w},h_${w},q_${w > 400 ? 88 : 80},enc_jpg/da1752_${MH[n]}~mv2.jpg`;
@@ -113,6 +113,7 @@ function drawPicks(){
       b.onclick = () => openPicker(k); host.appendChild(b);
     }
   }
+  drawPair();
 }
 function changed(){ save(); drawPicks(); if (open) { dirty = true; navs(); drawViewer(); } else renderGrid(); }
 
@@ -159,7 +160,8 @@ async function buildGrid(){
 }
 
 /* ---------- full-screen view ---------- */
-const par = { x: 0, y: 0 }, tilt = { on: false, base: null, v: [0, 0], at: 0 }, mouse = { v: [0, 0], at: 0 }, fx = { dx: 0, op: 1 };
+// look: where the viewer is turned (yaw right +, pitch up +, radians); sy / sp = what is on screen, easing towards it
+const look = { y: 0, p: 0, sy: 0, sp: 0, oy: 0, op: 0, last: null, on: false }, fx = { dx: 0, op: 1 };
 let q = 1, busy = false, drag = null, going = false;
 const liveOf = (room) => !STILL && !!room.j.live && Object.keys(room.j.live).length > 0;
 
@@ -167,11 +169,54 @@ function placeFrame(){ const f = $('frame'); f.style.transform = `translate(calc
 // where a room's subject sits (across, down; 0 to 1): the part that stays on screen when the screen crops the picture. The upright kitchens need it: a sideways screen shows under half their height.
 const FOCUS = { k1: [.75, .68], k2: [.5, .6] };
 function setFrame(dx, op){ fx.dx = dx; fx.op = op; placeFrame(); }
-// a screen held sideways (iPad, laptop): the room always covers the whole screen, no space left or right.
-// An upright phone: fill as far as possible without cropping away more than two fifths of a wide room.
+// every screen, held either way: the room always covers the whole screen (Bhavya 19-11: "full screen pictures that cover whole of my screen").
+// What the screen crops away is reached by looking round (drag, or move the phone).
 function fitOf(room){
   const st = $('stage'), a = st.clientWidth / room.j.W, b = st.clientHeight / room.j.H;
-  return st.clientWidth >= st.clientHeight ? Math.max(a, b) : Math.min(Math.max(a, b), Math.min(a, b) / .6);
+  return Math.max(a, b);
+}
+/* ---------- looking round: turning the camera where it stands ----------
+   A camera that only turns (does not move) sees the same scene, so the photo is redrawn exactly by one projective map:
+   H = K Rt K^-1 (K = the room's own lens, Rt = the turn). It is applied to the drawn picture as a CSS matrix3d, so turning costs no redraw.
+   The turn stops where the screen would show past the photo's edge. */
+const rotOf = (y, p) => { const cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
+  return [[cy, -sy * sp, sy * cp], [0, cp, -sp], [-sy, cy * sp, cy * cp]]; };          // the turned camera's axes, in the photo camera's frame
+const mul3 = (A, B) => A.map((r) => [0, 1, 2].map((j) => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
+const tr3 = (A) => [0, 1, 2].map((i) => [A[0][i], A[1][i], A[2][i]]);
+function homog(K, y, p, inv){
+  const k = [[K.f, 0, K.cx], [0, K.f, K.cy], [0, 0, 1]], ki = [[1 / K.f, 0, -K.cx / K.f], [0, 1 / K.f, -K.cy / K.f], [0, 0, 1]], R = rotOf(y, p);
+  return mul3(mul3(k, inv ? R : tr3(R)), ki);                                         // photo pixel -> turned view pixel (inv: the way back)
+}
+// how far the picture must zoom in (about the screen's centre) so that, turned by (y, p), it still covers the screen. Above ZMAX = too far.
+const ZMAX = 1.3;
+function lookZoom(y, p){
+  const K = open && open.K; if (!K) return 1;
+  const Hi = homog(K, y, p, true), st = $('stage'), sw = st.clientWidth, sh = st.clientHeight;
+  const x0 = sw / 2 - K.cw / 2 + (open.ox || 0), y0 = sh / 2 - K.ch / 2 + (open.oy || 0), c = [sw / 2 - x0, sh / 2 - y0];
+  const inside = (z) => { for (const [u, v] of [[0, 0], [sw, 0], [0, sh], [sw, sh]]){
+    const a = c[0] + (u - x0 - c[0]) / z, b = c[1] + (v - y0 - c[1]) / z, w = Hi[2][0] * a + Hi[2][1] * b + Hi[2][2]; if (w <= 0) return false;
+    const X = (Hi[0][0] * a + Hi[0][1] * b + Hi[0][2]) / w, Y = (Hi[1][0] * a + Hi[1][1] * b + Hi[1][2]) / w;
+    if (X < -1 || Y < -1 || X > K.cw + 1 || Y > K.ch + 1) return false; } return true; };
+  if (inside(1)) return 1; if (!inside(ZMAX)) return ZMAX + 1;
+  let lo = 1, hi = ZMAX; for (let i = 0; i < 12; i++){ const m = (lo + hi) / 2; if (inside(m)) hi = m; else lo = m; } return hi;
+}
+const lookOK = (y, p) => lookZoom(y, p) <= ZMAX;
+const bis = (f) => { if (f(1)) return 1; let lo = 0, hi = 1; for (let i = 0; i < 14; i++){ const m = (lo + hi) / 2; if (f(m)) lo = m; else hi = m; } return lo; };
+function lookTo(y, p){                                       // turn towards (y, p) as far as the photo allows, sliding along its edge
+  if (!lookOK(look.oy, look.op)){ look.oy = look.op = 0; }
+  const ty = bis((t) => lookOK(look.oy + (y - look.oy) * t, look.op)), ny = look.oy + (y - look.oy) * ty;
+  const tp = bis((t) => lookOK(ny, look.op + (p - look.op) * t)), np = look.op + (p - look.op) * tp;
+  look.y = look.oy = ny; look.p = look.op = np;
+}
+function lookReset(){ look.y = look.p = look.sy = look.sp = look.oy = look.op = 0; lookApply(); }
+function lookApply(){
+  const cv = eng && eng.canvas; if (!cv) return; const K = open && open.K;
+  if (!K || (Math.abs(look.sy) < 1e-5 && Math.abs(look.sp) < 1e-5)){ if (cv.style.transform) cv.style.transform = ''; return; }
+  const z = Math.min(ZMAX, lookZoom(look.sy, look.sp)), st = $('stage');
+  const c = [st.clientWidth / 2 - (st.clientWidth / 2 - K.cw / 2 + (open.ox || 0)), st.clientHeight / 2 - (st.clientHeight / 2 - K.ch / 2 + (open.oy || 0))];
+  const H = mul3([[z, 0, c[0] * (1 - z)], [0, z, c[1] * (1 - z)], [0, 0, 1]], homog(K, look.sy, look.sp)), n = H[2][2];      // turn, then zoom in about the screen's centre just enough
+  const m = [H[0][0], H[1][0], 0, H[2][0], H[0][1], H[1][1], 0, H[2][1], 0, 0, 1, 0, H[0][2], H[1][2], 0, H[2][2]].map((v) => v / n);
+  cv.style.transformOrigin = '0 0'; cv.style.transform = `matrix3d(${m.map((v) => +v.toPrecision(9)).join(',')})`;
 }
 async function drawViewer(t, sharp){
   if (!open) return; const me = open;
@@ -179,28 +224,26 @@ async function drawViewer(t, sharp){
   if (open !== me) return;
   const fit = fitOf(room), dpr = Math.min(2, window.devicePixelRatio || 1) * (sharp || STILL ? 1 : q);
   const w = Math.min(room.j.W, Math.max(320, Math.round(room.j.W * fit * dpr)));
-  const cv = eng.render(room, S, { width: w, live: me.live, time: t === undefined ? me.t : t, par: STILL ? null : [par.x, par.y] });
+  const cv = eng.render(room, S, { width: w, live: me.live, time: t === undefined ? me.t : t, par: null });
   if (t !== undefined) me.t = t;
   const cw = Math.round(room.j.W * fit), ch = Math.round(room.j.H * fit);
   if (cv.style.width !== cw + 'px' || cv.style.height !== ch + 'px'){ cv.style.width = cw + 'px'; cv.style.height = ch + 'px'; }
   const fo = FOCUS[me.id] || [.5, .8];
   me.oy = Math.max(0, ch - $('stage').clientHeight) * (.5 - fo[1]);       // taller than the screen: keep more floor than ceiling
   me.ox = Math.max(0, cw - $('stage').clientWidth) * (.5 - fo[0]);
-  placeFrame();
+  const K = { f: room.j.f * fit, cx: room.j.cx * fit, cy: room.j.cy * fit, cw, ch }, moved = !me.K || me.K.cw !== cw || me.K.ch !== ch; me.K = K;
+  placeFrame(); if (moved && !lookOK(look.oy, look.op)) lookReset(); lookApply();
 }
 function loop(){
-  cancelAnimationFrame(raf); if (!open || STILL) return;
+  cancelAnimationFrame(raf); if (!open) return;
   const t0 = performance.now(); let last = t0, acc = 0, n = 0;
   const step = (now) => {
     if (!open) return; raf = requestAnimationFrame(step);
-    if (busy || now - last < 33) return;
+    const e = STILL ? 1 : .22, dy = look.y - look.sy, dp = look.p - look.sp;
+    if (Math.abs(dy) > 1e-5 || Math.abs(dp) > 1e-5){ look.sy += dy * e; look.sp += dp * e; lookApply(); }
+    if (!open.live || busy || now - last < 33) return;
     const dt = now - last; last = now; const t = (now - t0) / 1000;
     acc += dt; if (++n === 24){ if (!QLOCK && acc / n > 62 && q > .5) q = Math.max(.5, q - .17); acc = 0; n = 0; }   // slow device: draw the moving picture a little smaller
-    let tx = Math.sin(t * .33) * .42, ty = Math.sin(t * .21 + 1.3) * .3;                                             // nobody touching: a slow drift
-    if (tilt.on && now - tilt.at < 1500){ tx = tx * .2 + tilt.v[0]; ty = ty * .2 + tilt.v[1]; }
-    else if (now - mouse.at < 2500){ tx = mouse.v[0]; ty = mouse.v[1]; }
-    if (drag && drag.go) tx -= drag.dx / window.innerWidth * 1.6;
-    par.x += (clamp(tx) - par.x) * .1; par.y += (clamp(ty) - par.y) * .1;
     busy = true; drawViewer(t).finally(() => { busy = false; });
   };
   raf = requestAnimationFrame(step);
@@ -216,19 +259,18 @@ function navs(){ const one = vlist().length < 2; $('prev').hidden = $('next').hi
 async function show(i){
   const L = vlist(), c = L[(i % L.length + L.length) % L.length], room = await c.room;
   if (oneList && c.sp !== vspace){ vspace = c.sp; $('viewer').classList.toggle('fo', floorOnly() || kit()); drawPicks(); }
-  open = { ...c, i: L.indexOf(c), live: liveOf(room), oy: 0, ox: 0, t: 0, name: room.j.name };
-  $('vname').textContent = room.j.name; navs();
+  open = { ...c, i: L.indexOf(c), live: liveOf(room), oy: 0, ox: 0, t: 0, name: room.j.name }; look.y = look.p = look.sy = look.sp = look.oy = look.op = 0;
+  $('vname').textContent = room.j.name; navs(); drawPair();
   $('vbg').style.backgroundImage = `url("${asset(`rooms/${c.id}/thumb.jpg`)}")`;
   await drawViewer(0);
 }
 async function openViewer(c, soft, sp = 'bath'){
   vspace = sp; $('viewer').classList.toggle('fo', floorOnly() || kit()); drawPicks();
   $('viewer').classList.toggle('fadein', !!soft);
-  if (needAsk && !tilt.on && store.get('drb-tilt') === '1') askTilt();      // must run inside the tap itself
   $('frame').appendChild(eng.canvas); $('viewer').classList.remove('bare'); $('viewer').classList.add('on'); document.body.style.overflow = 'hidden';
   history.pushState({ v: 1 }, ''); setFrame(0, 1);
   await show(Math.max(0, vlist().findIndex(v => v.id === c.id))); loop();
-  if (!store.get('drb-hint') && vlist().length > 1){ store.set('drb-hint', '1'); toast(`Swipe for the next ${kit() ? 'kitchen' : floorOnly() ? 'room' : 'bathroom'}. Tap the picture to hide the buttons.`); }
+  if (!store.get('drb-hint2')){ store.set('drb-hint2', '1'); toast(`Drag the picture to look round. The arrows show the next ${kit() ? 'kitchen' : floorOnly() ? 'room' : 'bathroom'}.`); }
 }
 function closeViewer(pop){
   if (!open) return; open = null; cancelAnimationFrame(raf); going = false; drag = null;
@@ -245,49 +287,45 @@ async function go(dir){
   setFrame(dir * 80, 0); f.getBoundingClientRect(); f.classList.add('anim'); setFrame(0, 1); await wait(240);
   f.classList.remove('anim'); going = false;
 }
-// swipe = next / previous bathroom, short tap = hide or show the buttons
+// drag = look round (the picture follows the finger), short tap = hide or show the buttons. The arrows and the keyboard change the room.
 {
-  const st = $('stage'), f = $('frame');
-  st.addEventListener('pointerdown', (e) => { if (going || !open) return; drag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, t: performance.now(), go: false }; try { st.setPointerCapture(e.pointerId); } catch (er) {} });
+  const st = $('stage');
+  st.addEventListener('pointerdown', (e) => { if (going || !open) return; drag = { id: e.pointerId, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), go: false }; try { st.setPointerCapture(e.pointerId); } catch (er) {} });
   st.addEventListener('pointermove', (e) => {
-    if (!drag){ if (e.pointerType === 'mouse'){ mouse.v = [(.5 - e.clientX / window.innerWidth) * 1.6, (.5 - e.clientY / window.innerHeight) * 1.2]; mouse.at = performance.now(); } return; }
-    if (e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!drag.go && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) drag.go = true;
-    if (drag.go){ drag.dx = dx; setFrame(dx, 1 - Math.min(.45, Math.abs(dx) / window.innerWidth)); }
+    if (!drag || e.pointerId !== drag.id || !open || !open.K) return;
+    if (!drag.go && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 8) drag.go = true;
+    if (!drag.go) return;
+    const f = open.K.f; lookTo(look.y - (e.clientX - drag.lx) / f, look.p + (e.clientY - drag.ly) / f); drag.lx = e.clientX; drag.ly = e.clientY;
   });
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return; const d = drag; drag = null; const dt = performance.now() - d.t;
-    if (d.go){
-      if (e.type === 'pointerup' && (Math.abs(d.dx) > 70 || (Math.abs(d.dx) > 28 && dt < 260))) go(d.dx < 0 ? 1 : -1);
-      else { f.classList.add('anim'); setFrame(0, 1); setTimeout(() => f.classList.remove('anim'), 240); }
-    } else if (e.type === 'pointerup' && dt < 450 && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 8) $('viewer').classList.toggle('bare');
+    if (e.type === 'pointerup') motionAsk();                 // iPhone and iPad share motion only after a tap
+    if (!d.go && e.type === 'pointerup' && dt < 450) $('viewer').classList.toggle('bare');
   };
   st.addEventListener('pointerup', end); st.addEventListener('pointercancel', end);
 }
-// tilting the device (iPhone and iPad ask once before sharing motion)
+// moving the phone turns the view the same way (a window into the room). The phone's facing direction is worked out from all three angles,
+// so it is the same held upright, flat or sideways.
 const needAsk = typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function';
-function onTilt(e){
-  if (e.gamma == null || e.beta == null) return;
-  const so = screen.orientation; const a = so && typeof so.angle === 'number' ? so.angle : (typeof window.orientation === 'number' ? window.orientation : 0);
-  let x = e.gamma, y = e.beta;
-  if (a === 90){ x = e.beta; y = -e.gamma; } else if (a === 270 || a === -90){ x = -e.beta; y = e.gamma; } else if (a === 180){ x = -e.gamma; y = -e.beta; }
-  if (!tilt.base) tilt.base = [x, y];
-  tilt.base[0] += (x - tilt.base[0]) * .003; tilt.base[1] += (y - tilt.base[1]) * .003;     // however it is held becomes the new centre, slowly
-  tilt.v = [clamp((tilt.base[0] - x) / 12), clamp((tilt.base[1] - y) / 12)]; tilt.at = performance.now();
+function onMotion(e){
+  if (e.alpha == null || e.beta == null || e.gamma == null) return;
+  const r = Math.PI / 180, ca = Math.cos(e.alpha * r), sa = Math.sin(e.alpha * r), cb = Math.cos(e.beta * r), sb = Math.sin(e.beta * r), cg = Math.cos(e.gamma * r), sg = Math.sin(e.gamma * r);
+  const vx = -ca * sg - sa * sb * cg, vy = -sa * sg + ca * sb * cg, vz = -cb * cg;      // the direction the back of the phone faces (east, north, up)
+  if (Math.abs(vz) > .93){ look.last = null; return; }                                  // lying flat: no sure left or right
+  const yaw = Math.atan2(vx, vy), pit = Math.asin(Math.max(-1, Math.min(1, vz)));
+  if (look.last && open && open.K && !drag && !zm){
+    let dy = yaw - look.last[0]; if (dy > Math.PI) dy -= 2 * Math.PI; if (dy < -Math.PI) dy += 2 * Math.PI;
+    const dp = pit - look.last[1];
+    if (Math.abs(dy) < .25 && Math.abs(dp) < .25) lookTo(look.y + dy, look.p + dp);
+  }
+  look.last = [yaw, pit];
 }
-function tiltSet(on){
-  tilt.on = on; tilt.base = null; $('tilt').setAttribute('aria-pressed', on);
-  if (on) window.addEventListener('deviceorientation', onTilt); else window.removeEventListener('deviceorientation', onTilt);
+function motionOn(){ if (look.on) return; look.on = true; look.last = null; window.addEventListener('deviceorientation', onMotion); }
+function motionAsk(){
+  if (STILL || look.on || !needAsk || store.get('drb-motion') === '0') return;
+  DeviceOrientationEvent.requestPermission().then((r) => { if (r === 'granted'){ store.set('drb-motion', '1'); motionOn(); } else store.set('drb-motion', '0'); }).catch(() => {});
 }
-function askTilt(){
-  return DeviceOrientationEvent.requestPermission().then(r => {
-    if (r === 'granted'){ tiltSet(true); store.set('drb-tilt', '1'); }
-    else { store.set('drb-tilt', '0'); toast('Motion is switched off for this app. The picture still moves gently by itself.'); }
-  }).catch(() => {});
-}
-$('tilt').onclick = () => { if (tilt.on){ tiltSet(false); store.set('drb-tilt', '0'); } else if (needAsk) askTilt(); else tiltSet(true); };
-if (!STILL){ if (needAsk) $('tilt').hidden = false; else if ('DeviceOrientationEvent' in window) tiltSet(true); }
+if (!STILL && !needAsk && 'DeviceOrientationEvent' in window) motionOn();
 
 async function picture(){
   const room = await open.room, S = await sets(vspace);
@@ -612,10 +650,12 @@ function drawChips(){
   const fins = new Set(pool.filter(d => sizeF === 'all' || sizeOf(d) === sizeF).map(finCat));
   $('fins').hidden = fins.size < 2 || pickSlot === 'slab';      // the product list states no surface finish for most slabs: no Glossy / Matt sorting there
   chips($('fins'), [['all', 'Any finish'], ['Glossy', 'Glossy'], ['Matt', 'Matt']], finF, (v) => { finF = v; drawChips(); drawList(); });
+  const pr = pickSpace === 'out' && pool.some((d) => d.pair);                       // terrace and parking: the crisscross pairs on their own
+  $('pairf').hidden = !pr; if (pr) chips($('pairf'), [['all', 'All floors'], ['pair', 'Crisscross pairs'], ['one', 'Single tiles']], pairF, (v) => { pairF = v; drawList(); drawChips(); });
 }
 const fitP = (d) => fitsIn(pickSpace, d, pickSlot) && !(d.terrace && open && open.id === 'p1');
 function openPicker(slot){
-  pickSpace = open ? vspace : 'bath'; pickSlot = slot; sizeF = 'all'; finF = 'all'; $('q').value = '';
+  pickSpace = open ? vspace : 'bath'; pickSlot = slot; sizeF = 'all'; finF = 'all'; pairF = 'all'; $('q').value = '';
   $('sheetTitle').textContent = { floor: 'Floor tile', wall: 'Wall tile', feature: 'Highlighter wall tile', slab: 'Kitchen slab' }[slot];
   drawChips(); drawList(); $('sheet').classList.add('on'); $('list').scrollTop = 0;
 }
@@ -623,7 +663,7 @@ function drawList(){
   const q = $('q').value.trim().toLowerCase(), L = $('list'); L.innerHTML = '';
   const fr = document.createDocumentFragment();
   const cur = SPACES[pickSpace].kit ? kstate[pickSlot] : SPACES[pickSpace].floorOnly ? fstate[pickSpace] : state[pickSlot];
-  const rows = designs.filter(d => fitP(d) && (sizeF === 'all' || sizeOf(d) === sizeF) && (finF === 'all' || finCat(d) === finF) && (!q || d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q)));
+  const rows = designs.filter(d => fitP(d) && (pairF === 'all' || pickSpace !== 'out' || (pairF === 'pair') === !!d.pair) && (sizeF === 'all' || sizeOf(d) === sizeF) && (finF === 'all' || finCat(d) === finF) && (!q || d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q)));
   rows.forEach(d => {
     const b = document.createElement('button'); b.className = 'tile' + (d.size[0] === d.size[1] ? ' sq' : ''); b.type = 'button';
     b.innerHTML = '<i></i><b></b><small></small>'; b.querySelector('b').textContent = d.name; b.querySelector('small').textContent = label(d);
@@ -633,6 +673,29 @@ function drawList(){
   });
   if (!rows.length){ const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'No tile matches. Try another size or finish.'; fr.appendChild(p); }
   L.appendChild(fr);
+}
+// the crisscross choices for the floor on show: each of its tiles on its own (a 500 x 500 tile never alone) and every pair it belongs to
+function pairOpts(){
+  if (!open || vspace !== 'out' || oneList) return [];
+  const d = byCode(fstate.out); if (!d) return []; const base = d.pair || [d.code];
+  const ok = (x) => x && fitsIn('out', x) && !(x.terrace && open.id === 'p1');
+  const L = [...base.map(byCode), ...designs.filter((x) => x.pair && x.pair.some((c) => base.includes(c)))].filter(ok);
+  return L.filter((x, i) => L.findIndex((y) => y.code === x.code) === i);
+}
+function drawPair(){                                         // a second card beside the floor: how it is laid (on its own, or the crisscross pair)
+  const old = $('vpair'); if (old) old.remove();
+  const L = pairOpts(), d = byCode(fstate.out); if (L.length < 2 || !d) return;
+  const nx = L[(L.findIndex((x) => x.code === d.code) + 1) % L.length];
+  const b = document.createElement('button'); b.className = 'slot pairc'; b.type = 'button'; b.id = 'vpair';
+  b.innerHTML = '<i class="sw"></i><span><small>Tap for</small><b></b></span>';
+  b.querySelector('.sw').style.backgroundImage = nx.faces.slice(0, 2).map((f) => `url("${thumb(f)}")`).join(',');
+  b.querySelector('b').textContent = nx.pair ? (d.pair ? 'Other pair' : 'Crisscross') : 'Single tile';
+  b.setAttribute('aria-label', nx.pair ? `Lay as a crisscross pair: ${nx.name}` : `Lay ${nx.name} on its own`); b.onclick = nextPair;
+  $('vpicks').appendChild(b);
+}
+function nextPair(){
+  const L = pairOpts(), d = byCode(fstate.out); if (L.length < 2) return;
+  const nx = L[(L.findIndex((x) => x.code === d.code) + 1) % L.length]; fstate.out = nx.code; changed(); toast(nx.pair ? `Crisscross: ${nx.name}` : `${nx.name} on its own`);
 }
 function choose(code){ if (SPACES[pickSpace].kit) kstate[pickSlot] = code; else if (SPACES[pickSpace].floorOnly) fstate[pickSpace] = code; else state[pickSlot] = code; $('sheet').classList.remove('on'); changed(); }
 
@@ -747,8 +810,8 @@ if ('serviceWorker' in navigator){
 }
 window.__looks = { ready: start() };
 window.__looks.hall = () => hall;
-// test hooks: one frame of a room as a JPEG data URL, and the tilt position
+// test hooks: one frame of a room as a JPEG data URL, and the look direction
 window.__looks.frame = async (id, t, w, live = true, p = null) => { const c = cards.find(c => c.id === id); return eng.render(await c.room, await sets(), { width: w, live, time: t, par: p }).toDataURL('image/jpeg', .9); };
 window.__looks.space = (k) => setSpace(k);
 window.__looks.can = (code) => { const keep = [{ ...state }, { ...fstate }, { ...kstate }], v = !!pickRoom(code); Object.assign(state, keep[0]); Object.assign(fstate, keep[1]); Object.assign(kstate, keep[2]); return v; };      // test hook: has the tool a room for this design?
-window.__looks.par = (x, y) => { mouse.v = [x, y]; mouse.at = performance.now() + 1e9; };
+window.__looks.look = (y, p) => { if (y !== undefined){ lookTo(y, p); look.sy = look.y; look.sp = look.p; lookApply(); } return { y: look.y, p: look.p, K: open && open.K }; };

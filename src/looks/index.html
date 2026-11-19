@@ -39,6 +39,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 .slot span { min-width: 0; display: block; }
 .slot small { display: block; font-size: 12px; color: var(--muted); line-height: 1.2; }
 .slot b { display: block; font-weight: 500; font-size: 15px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slot.pairc .sw { background-size: 50% 100%, 50% 100%; background-position: left center, right center; background-repeat: no-repeat; }
 .dice { border: 0; border-radius: 14px; background: var(--ink); color: #fff; padding: 0 20px; font-weight: 500; font-size: 15px; display: flex; align-items: center; gap: 10px; white-space: nowrap; min-height: 48px; }
 .dice svg { transition: transform .5s cubic-bezier(.2,.7,.2,1); }
 .dice.spin svg { transform: rotate(180deg); }
@@ -55,7 +56,8 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 .viewer { position: fixed; inset: 0; z-index: 20; background: var(--night); display: none; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
 .viewer.on { display: block; }
 .vbg { position: absolute; inset: -60px; background: center/cover no-repeat; filter: blur(34px) brightness(.42) saturate(.8); }
-.stage { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
+.stage { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; }
+.stage:active { cursor: grabbing; }
 .frame { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); will-change: transform, opacity; }
 .frame.anim { transition: transform .22s cubic-bezier(.2,.7,.2,1), opacity .22s; }
 .frame canvas { display: block; }
@@ -159,6 +161,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
   .pickrow { grid-template-columns: minmax(0, 1fr); }
   .slot { flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px; min-height: 0; }
   .slot .sw { width: 100%; height: 44px; }
+  .slot span { width: 100%; } .slot small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }      /* never wider than the phone */
   .dice { justify-content: center; }
   .bar { grid-template-columns: auto minmax(0, 1fr); row-gap: 8px; column-gap: 12px; padding: 8px; }
   .bar .picks { grid-column: 1 / -1; gap: 6px; }
@@ -196,7 +199,6 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
     <span class="vlogo"><img data-asset="logo-white.svg" alt="Drambay Tiles &amp; Sanitary Ware"></span>
     <span class="where glass"><b id="vname" style="font-weight:400"></b><i id="vcount"></i></span>
     <button class="vbtn glass zb" id="zoomb" type="button" aria-label="See the tile close up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6M10.5 8v5M8 10.5h5"/></svg><span>Tile close-up</span></button>
-    <button class="vbtn glass" id="tilt" type="button" aria-pressed="false" hidden>3D tilt</button>
     <button class="vbtn x glass" id="close" type="button" aria-label="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
   </div>
   <button class="nav prev glass chrome" id="prev" type="button" aria-label="Previous room"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
@@ -239,6 +241,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
     <div class="search"><input id="q" type="search" placeholder="Search by name or code" autocomplete="off" aria-label="Search tiles"></div>
     <div class="chips" id="sizes" aria-label="Size"></div>
     <div class="chips" id="fins" aria-label="Finish"></div>
+    <div class="chips" id="pairf" aria-label="Crisscross pairs" hidden></div>
     <div class="list" id="list"></div>
   </div>
 </div>

@@ -12,8 +12,7 @@ const SPACES = {
 };
 // dark + light pairs that are laid as a checker (500 x 500 pairs are only ever shown as the pair; the 600 x 600 matt pairs are for the terrace, not the driveway)
 const PAIRS = [['DRB-5050-001', 'DRB-5050-002'], ['DRB-5050-009', 'DRB-5050-010'], ['DRB-5050-011', 'DRB-5050-012'], ['DRB-5050-013', 'DRB-5050-014'], ['DRB-5050-006', 'DRB-5050-007'],
-  ['DRB-6060-018', 'DRB-6060-019'], ['DRB-6060-020', 'DRB-6060-021'], ['DRB-6060-020', 'DRB-6060-024'], ['DRB-6060-016', 'DRB-6060-017'],
-  ['DRB-5050-015', 'DRB-5050-016'], ['DRB-5050-020', 'DRB-5050-021'], ['DRB-5050-025', 'DRB-5050-026']];      // the last three: the Jalandhar godown's 4028, Acacia 03 and Acacia 89
+  ['DRB-6060-018', 'DRB-6060-019'], ['DRB-6060-020', 'DRB-6060-021'], ['DRB-6060-020', 'DRB-6060-024'], ['DRB-6060-016', 'DRB-6060-017']];
 const WA = '919501034545';
 const Q = new URLSearchParams(location.search);
 const LOCAL = Q.has('local');
@@ -38,7 +37,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 
 let designs = [], MH = {}, TONE = {}, eng, cards = [], state = {}, fstate = {}, kstate = {}, vspace = 'bath', hspace = 'bath', pickSpace = 'bath', open = null, pickSlot = null, sizeF = 'all', finF = 'all', pairF = 'all', dirty = false, raf = 0, token = 0;
 
-const face = (n, w) => (LOCAL || /^local/.test(MH[n] || '')) ? `tiles/${n}.jpg`      // a face that is not on Wix Media yet (mh.json says "local") sits beside the page, in tiles/
+const face = (n, w) => LOCAL ? `tiles/${n}.jpg`
   : `https://static.wixstatic.com/media/da1752_${MH[n]}~mv2.jpg/v1/fit/w_${w},h_${w},q_${w > 400 ? 88 : 80},enc_jpg/da1752_${MH[n]}~mv2.jpg`;
 const full = (n) => face(n, 1536), thumb = (n) => face(n, 320);
 const byCode = (c) => designs.find(d => d.code === c);
@@ -810,10 +809,10 @@ if ('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !once && !open && !$('sheet').classList.contains('on')){ once = true; location.reload(); } });
 }
 window.__looks = { ready: start() };
+window.__looks.ready.then(() => { window.__looksOK = true; try { sessionStorage.removeItem('drb-retry'); } catch (e) {} });      // started: a later fault never reloads the page
 window.__looks.hall = () => hall;
 // test hooks: one frame of a room as a JPEG data URL, and the look direction
-window.__looks.frame = async (id, t, w, live = true, p = null, sp = 'bath') => { const c = cards.find(c => c.id === id) || roomOf(id); return eng.render(await c.room, await sets(sp), { width: w, live, time: t, par: p }).toDataURL('image/jpeg', .9); };
+window.__looks.frame = async (id, t, w, live = true, p = null) => { const c = cards.find(c => c.id === id); return eng.render(await c.room, await sets(), { width: w, live, time: t, par: p }).toDataURL('image/jpeg', .9); };
 window.__looks.space = (k) => setSpace(k);
-window.__looks.pick = (code) => { const v = pickRoom(code); return v ? { id: v.c.id, sp: v.sp } : null; };      // test hook: lay this design in its room (catalogue pictures); the room's id and space
 window.__looks.can = (code) => { const keep = [{ ...state }, { ...fstate }, { ...kstate }], v = !!pickRoom(code); Object.assign(state, keep[0]); Object.assign(fstate, keep[1]); Object.assign(kstate, keep[2]); return v; };      // test hook: has the tool a room for this design?
 window.__looks.look = (y, p) => { if (y !== undefined){ lookTo(y, p); look.sy = look.y; look.sp = look.p; lookApply(); } return { y: look.y, p: look.p, K: open && open.K }; };

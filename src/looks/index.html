@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>/* if the tool stops while starting (an old saved script beside a new page), load it again once */
+addEventListener('error', function (e) { try { if (!(e instanceof ErrorEvent) || window.__looksOK || sessionStorage.getItem('drb-retry')) return; sessionStorage.setItem('drb-retry', '1'); setTimeout(function () { location.reload(); }, 400); } catch (x) {} }, true);
+</script>
 <title>Try Your Tiles | Drambay Rooms Studio</title>
 <meta name="description" content="Choose your tiles and see them laid across a whole room.">
 <meta name="robots" content="noindex">
@@ -194,6 +197,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 
 <div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Room, full screen">
   <div class="vbg" id="vbg"></div>
+  <button id="tilt" type="button" hidden style="display:none" aria-hidden="true" tabindex="-1"></button><!-- left for an older saved app.js (v15 and before), which looks for it; remove after 20-12-2026 -->
   <div class="stage" id="stage"><div class="frame" id="frame"></div></div>
   <div class="vtop chrome">
     <span class="vlogo"><img data-asset="logo-white.svg" alt="Drambay Tiles &amp; Sanitary Ware"></span>

@@ -23,6 +23,7 @@ let oneList = null;
 const DEALER = (Q.get('dealer') || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
 let hallHome = false;                         // the display hall is the first and last screen (one-design link, dealer link)
 const KEY = DEALER ? '-' + DEALER : '';
+const FRONT = (Q.get('front') || (Q.get('via') === 'pdf' && Q.get('dealer') ? Q.get('pick') : '') || '').trim().toUpperCase();      // a design's QR in a dealer's PDF: his display hall opens with that design on the front panel (Bhavya 19-11)
 const PICK = Q.get('pick');                  // a link from a design's own page: the full tool opens in a room with that tile already laid
 for (const e of document.querySelectorAll('img[data-asset]')) e.src = asset(e.dataset.asset);
 const $ = (id) => document.getElementById(id);
@@ -406,14 +407,16 @@ function decorBay(d, base){
   const p = plainFor(d); if (!p) return null;
   return Object.assign(bayOf([p.code, p.code, d.code, base]), { design: d, name: d.name, meta: `${FIN[d.finish] || d.finishEn}  ·  ${d.size[0]} x ${d.size[1]} mm`, joint: jointOf(TONE[d.code]) });
 }
+const isFront = (d) => !!FRONT && (d.code.toUpperCase() === FRONT || (!!d.pair && d.pair.includes(FRONT)));
+const toFront = (pool) => { const i = pool.findIndex(isFront); if (i > 0) pool.unshift(pool.splice(i, 1)[0]); return pool; };      // the QR's design takes the first (front) panel
 // a dealer's display: his own designs take the twelve bays in turn (the list goes round again when he has fewer than twelve)
 function autoRows(sp, mixed){
   const T = (d) => TONE[d.code] || [70, 0, 0], sh = (a) => mixed ? a.map(v => [Math.random(), v]).sort((p, q) => p[0] - q[0]).map(v => v[1]) : a;
   if (sp === 'bath'){
-    const pool = sh(designs.filter(d => fits(d, 'wall') && fits(d, 'floor'))), calm = pool.filter(d => T(d)[0] >= 78), bases = ['r3', 'r7', 'r6']; if (!pool.length) return [];
+    const pool = (mixed ? sh : (a) => toFront(sh(a)))(designs.filter(d => fits(d, 'wall') && fits(d, 'floor'))), calm = pool.filter(d => T(d)[0] >= 78), bases = ['r3', 'r7', 'r6']; if (!pool.length) return [];
     return Array.from({ length: 12 }, (_, i) => { const d = pool[i % pool.length]; return bayOf([d.code, T(d)[0] < 60 && calm.length ? calm[i % calm.length].code : d.code, d.code, bases[i % 3]]); });
   }
-  const pool = sh(designs.filter(d => fitsIn(sp, d))), bases = SPACES[sp].rooms; if (!pool.length) return [];
+  const pool = (mixed ? sh : (a) => toFront(sh(a)))(designs.filter(d => fitsIn(sp, d))), bases = SPACES[sp].rooms; if (!pool.length) return [];
   if (SPACES[sp].kit) return Array.from({ length: 12 }, (_, i) => { const d = pool[i % pool.length], f = floorFor(d); return f ? kitBay([d.code, f.code, bases[i % bases.length]]) : null; }).filter(Boolean);      // his slabs, each on a floor of his own
   return Array.from({ length: 12 }, (_, i) => { const d = pool[i % pool.length]; return floorBay([d.code, d.terrace ? 't1' : bases[i % bases.length]]); });
 }
@@ -501,7 +504,7 @@ function placeHallNav(){ if (hall) $('hall').style.setProperty('--ringy', Math.r
 function hallFront(){ hallHome = true; $('hall').classList.add('home', 'exit'); }
 function leave(){
   let ref = ''; try { const r = new URL(document.referrer); if (r.origin === location.origin && r.pathname !== location.pathname) ref = r.href; } catch (e) {}
-  if (ref){ if (history.length > 1) history.back(); else location.href = ref; return; }
+  if (ref){ if (history.length > 1 && Q.get('via') !== 'pdf') history.back(); else location.href = ref; return; }      // from a PDF scan: back to the dealer page itself, that design open
   const a = document.querySelector('header.top a[href]'); location.href = a ? a.href : location.pathname;
 }
 function openHall(){
@@ -773,7 +776,8 @@ async function start(){
   if (ONE){ await startOne(); return; }
   if (DEALER){      // the display hall is this link's home: no Drambay catalogue behind it
     if (!Object.keys(SPACES).some(spaceOK)){ document.querySelector('.wrap').innerHTML = '<header class="top"><img src="' + asset('d-logo.png') + '" alt="Drambay" width="36" height="34"></header><p class="note">This display is not set up yet.</p>'; return; }
-    const v = PICK && pickRoom(PICK); if (v){ save(); drawPicks(); }
+    const f = FRONT && pickRoom(FRONT); if (f){ save(); drawPicks(); if (!Q.get('space')) hspace = f.sp; }
+    const v = !f && PICK && pickRoom(PICK); if (v){ save(); drawPicks(); }
     hallHome = true; $('hall').classList.add('home'); openHall(); if (v) openViewer(v.c, true, v.sp); return;
   }
   const pv = PICK && pickRoom(PICK); if (pv){ save(); drawPicks(); }

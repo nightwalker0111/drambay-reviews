@@ -13,7 +13,7 @@ const SPACES = {
 // dark + light pairs that are laid as a checker (500 x 500 pairs are only ever shown as the pair; the 600 x 600 matt pairs are for the terrace, not the driveway)
 const PAIRS = [['DRB-5050-001', 'DRB-5050-002'], ['DRB-5050-009', 'DRB-5050-010'], ['DRB-5050-011', 'DRB-5050-012'], ['DRB-5050-013', 'DRB-5050-014'], ['DRB-5050-006', 'DRB-5050-007'],
   ['DRB-6060-018', 'DRB-6060-019'], ['DRB-6060-020', 'DRB-6060-021'], ['DRB-6060-020', 'DRB-6060-024'], ['DRB-6060-016', 'DRB-6060-017'],
-  ['DRB-5050-015', 'DRB-5050-016'], ['DRB-5050-020', 'DRB-5050-021'], ['DRB-5050-025', 'DRB-5050-026']];      // the last three: the Jalandhar godown's 4028, Acacia 03 and Acacia 89
+  ['DRB-5050-905', 'DRB-5050-906'], ['DRB-5050-918', 'DRB-5050-919'], ['DRB-5050-938', 'DRB-5050-939']];      // the last three: the Jalandhar godown's 4028, Acacia 03 and Acacia 89
 const WA = '919501034545';
 const Q = new URLSearchParams(location.search);
 const LOCAL = Q.has('local');

@@ -7,7 +7,9 @@
 addEventListener('error', function (e) { try { if (!(e instanceof ErrorEvent) || window.__looksOK || sessionStorage.getItem('drb-retry')) return; sessionStorage.setItem('drb-retry', '1'); setTimeout(function () { location.reload(); }, 400); } catch (x) {} }, true);
 </script>
 <script>/* opened straight into the display hall or a room: cover the page with the loading screen until the hall is drawn, so the choose page never flashes */
-(function () { try { if (/[?&](walk|pick|tile|dealer|open)=/.test(location.search)) document.documentElement.classList.add('boot'); } catch (x) {} })();
+(function () { try { if (!/[?&](walk|pick|tile|dealer|open)=/.test(location.search)) return; var r = document.documentElement; r.classList.add('boot');
+  setTimeout(function () { r.classList.remove('boot'); }, 10000);      /* never stuck: an older saved script does not know the loading screen, so it goes by itself after 10 s */
+} catch (x) {} })();
 </script>
 <title>Try Your Tiles | Drambay Rooms Studio</title>
 <meta name="description" content="Choose your tiles and see them laid across a whole room.">
@@ -182,7 +184,7 @@ header.top h1 { font: 400 26px/1.1 var(--display); margin: 0; letter-spacing: -.
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } .zfloat, .zoom.on { animation: none; } }
 #boot { display: none; }
 html.boot #boot { display: flex; position: fixed; inset: 0; z-index: 9999; background: #111314; align-items: center; justify-content: center; transition: opacity .45s ease; }
-html.boot body { overflow: hidden; }
+html.boot, html.boot body { overflow: hidden; background: #111314; }
 #boot.out { opacity: 0; pointer-events: none; }
 #boot .ring { position: relative; width: 132px; height: 132px; display: grid; place-items: center; }
 #boot .ring img { width: 64px; height: auto; }

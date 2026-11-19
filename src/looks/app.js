@@ -812,7 +812,8 @@ if ('serviceWorker' in navigator){
 window.__looks = { ready: start() };
 window.__looks.hall = () => hall;
 // test hooks: one frame of a room as a JPEG data URL, and the look direction
-window.__looks.frame = async (id, t, w, live = true, p = null) => { const c = cards.find(c => c.id === id); return eng.render(await c.room, await sets(), { width: w, live, time: t, par: p }).toDataURL('image/jpeg', .9); };
+window.__looks.frame = async (id, t, w, live = true, p = null, sp = 'bath') => { const c = cards.find(c => c.id === id) || roomOf(id); return eng.render(await c.room, await sets(sp), { width: w, live, time: t, par: p }).toDataURL('image/jpeg', .9); };
 window.__looks.space = (k) => setSpace(k);
+window.__looks.pick = (code) => { const v = pickRoom(code); return v ? { id: v.c.id, sp: v.sp } : null; };      // test hook: lay this design in its room (catalogue pictures); the room's id and space
 window.__looks.can = (code) => { const keep = [{ ...state }, { ...fstate }, { ...kstate }], v = !!pickRoom(code); Object.assign(state, keep[0]); Object.assign(fstate, keep[1]); Object.assign(kstate, keep[2]); return v; };      // test hook: has the tool a room for this design?
 window.__looks.look = (y, p) => { if (y !== undefined){ lookTo(y, p); look.sy = look.y; look.sp = look.p; lookApply(); } return { y: look.y, p: look.p, K: open && open.K }; };
